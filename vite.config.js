@@ -2,45 +2,123 @@ import { defineConfig } from 'vite';
 import path from 'path';
 import fs from 'fs';
 
-// Helper to find the latest renders directory in data/
-function getLatestRendersDirectory() {
+/**
+ * Scans data/renders and data/ for the latest timestamped renders directory (e.g. renders_YYYYMMDD_HHMMSS).
+ * Priority:
+ * 1. data/renders/renders_YYYYMMDD_HHMMSS (newest by name)
+ * 2. data/renders (if it directly contains .mp4 files)
+ * 3. data/renders_YYYYMMDD_HHMMSS (root data folder fallback)
+ */
+function resolveLatestRendersDirectory() {
   const dataDir = path.resolve(__dirname, 'data');
-  if (!fs.existsSync(dataDir)) return null;
+  const rendersDir = path.join(dataDir, 'renders');
 
-  // Check if data/renders exists
-  const standardRenders = path.resolve(dataDir, 'renders');
-  if (fs.existsSync(standardRenders) && fs.statSync(standardRenders).isDirectory()) {
-    return standardRenders;
+  let candidates = [];
+
+  // Check subdirectories in data/renders/
+  if (fs.existsSync(rendersDir) && fs.statSync(rendersDir).isDirectory()) {
+    const subEntries = fs.readdirSync(rendersDir)
+      .filter(name => name.startsWith('renders_') && fs.statSync(path.join(rendersDir, name)).isDirectory())
+      .map(name => ({ name, fullPath: path.join(rendersDir, name) }));
+    candidates.push(...subEntries);
+
+    // If data/renders itself has .mp4 files directly and no subdirs
+    const directMp4s = fs.readdirSync(rendersDir).filter(f => f.endsWith('.mp4'));
+    if (directMp4s.length > 0 && subEntries.length === 0) {
+      candidates.push({ name: 'renders_direct', fullPath: rendersDir });
+    }
   }
 
-  // Otherwise find latest timestamped renders_YYYYMMDD_HHMMSS
-  const entries = fs.readdirSync(dataDir)
-    .filter(name => name.startsWith('renders_') && fs.statSync(path.join(dataDir, name)).isDirectory())
-    .sort()
-    .reverse();
+  // Check top-level data/renders_YYYYMMDD_HHMMSS
+  if (fs.existsSync(dataDir)) {
+    const topEntries = fs.readdirSync(dataDir)
+      .filter(name => name.startsWith('renders_') && fs.statSync(path.join(dataDir, name)).isDirectory())
+      .map(name => ({ name, fullPath: path.join(dataDir, name) }));
+    candidates.push(...topEntries);
+  }
 
-  return entries.length > 0 ? path.join(dataDir, entries[0]) : null;
+  if (candidates.length === 0) return null;
+
+  // Sort descending to get the newest timestamp
+  candidates.sort((a, b) => b.name.localeCompare(a.name));
+  return candidates[0].fullPath;
 }
 
-// Custom plugin to serve the /data directory with range request support for smooth video streaming & seeking
+/**
+ * Extracts metadata (frame count, duration, timestamp) from README.md in the render folder if available
+ */
+function getDatasetMetadata(dirPath) {
+  if (!dirPath || !fs.existsSync(dirPath)) return null;
+  const dirName = path.basename(dirPath);
+  const readmePath = path.join(dirPath, 'README.md');
+
+  let metadata = {
+    activeDirectory: dirName,
+    fullPath: dirPath,
+    timestamp: dirName.replace(/^renders_/, ''),
+    frameCount: 500,
+    duration: 13.89,
+    startFrame: 2200,
+    fps: 35.997,
+    files: fs.readdirSync(dirPath).filter(f => f.endsWith('.mp4'))
+  };
+
+  if (fs.existsSync(readmePath)) {
+    try {
+      const content = fs.readFileSync(readmePath, 'utf8');
+      const startMatch = content.match(/\* \*\*Start Frame\*\*:\s*`?(\d+)`?/i);
+      const countMatch = content.match(/\* \*\*Frame Count\*\*:\s*`?(\d+)`?/i);
+      const tsMatch = content.match(/\*?Generation Timestamp\*?:\s*`?([0-9_]+)`?/i);
+      const durationMatch = content.match(/Duration\s*\|\s*Frame Count.*?\|\s*([\d\.]+)\s*s/i);
+
+      if (startMatch) metadata.startFrame = parseInt(startMatch[1], 10);
+      if (countMatch) metadata.frameCount = parseInt(countMatch[1], 10);
+      if (tsMatch) metadata.timestamp = tsMatch[1];
+      if (durationMatch) metadata.duration = parseFloat(durationMatch[1]);
+      if (metadata.frameCount && metadata.duration) {
+        metadata.fps = metadata.frameCount / metadata.duration;
+      }
+    } catch (err) {
+      console.warn('Error parsing dataset README.md:', err);
+    }
+  }
+
+  return metadata;
+}
+
+// Custom plugin to serve dynamic renders directory with byte-range video streaming support
 function serveDataDirectory() {
   return {
     name: 'serve-data-directory',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const decodedUrl = decodeURIComponent(req.url.split('?')[0]);
+
+        // API Endpoint for dynamic dataset info
+        if (decodedUrl === '/api/dataset-info') {
+          const latestDir = resolveLatestRendersDirectory();
+          const meta = getDatasetMetadata(latestDir);
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache'
+          });
+          res.end(JSON.stringify(meta || { activeDirectory: 'none', files: [] }));
+          return;
+        }
+
+        // Static video / data serving with latest timestamp resolution
         if (decodedUrl.startsWith('/data/')) {
           let relativePath = decodedUrl.slice(1); // remove leading slash
           let filePath = path.resolve(__dirname, relativePath);
 
-          // If requested /data/renders/... but data/renders doesn't have the file, check latest renders_*
-          if (!fs.existsSync(filePath) && decodedUrl.startsWith('/data/renders/')) {
+          // If path is /data/renders/... resolve dynamically to the latest timestamped folder
+          if (decodedUrl.startsWith('/data/renders/')) {
             const fileName = path.basename(decodedUrl);
-            const latestDir = getLatestRendersDirectory();
+            const latestDir = resolveLatestRendersDirectory();
             if (latestDir) {
-              const fallbackPath = path.join(latestDir, fileName);
-              if (fs.existsSync(fallbackPath)) {
-                filePath = fallbackPath;
+              const candidatePath = path.join(latestDir, fileName);
+              if (fs.existsSync(candidatePath)) {
+                filePath = candidatePath;
               }
             }
           }
@@ -50,7 +128,6 @@ function serveDataDirectory() {
             const fileSize = stat.size;
             const range = req.headers.range;
 
-            // Set content type
             const ext = path.extname(filePath).toLowerCase();
             const mimeTypes = {
               '.mp4': 'video/mp4',
@@ -59,7 +136,8 @@ function serveDataDirectory() {
               '.jpg': 'image/jpeg',
               '.jpeg': 'image/jpeg',
               '.json': 'application/json',
-              '.csv': 'text/csv'
+              '.csv': 'text/csv',
+              '.md': 'text/markdown'
             };
             const contentType = mimeTypes[ext] || 'application/octet-stream';
 

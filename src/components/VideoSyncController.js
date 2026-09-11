@@ -22,7 +22,10 @@ export class VideoSyncController {
     this.showGT = false;
     this.playbackRate = 1.0;
     this.isLooping = true;
-    this.fps = 36.0; // dataset frame rate (~200 frames / 5.56s = ~36 fps)
+    this.fps = 36.0;
+    this.totalFrames = 500;
+    this.startFrame = 2200;
+    this.activeDirectory = "renders_20260911_233706";
 
     this.syncInterval = null;
     this.isSyncingInternally = false;
@@ -30,6 +33,30 @@ export class VideoSyncController {
     this.initControls();
     this.bindVideoEvents();
     this.startDriftSyncLoop();
+    this.fetchDatasetMetadata();
+  }
+
+  async fetchDatasetMetadata() {
+    try {
+      const res = await fetch("/api/dataset-info");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.frameCount) this.totalFrames = data.frameCount;
+        if (data.startFrame) this.startFrame = data.startFrame;
+        if (data.fps) this.fps = data.fps;
+        if (data.activeDirectory) this.activeDirectory = data.activeDirectory;
+
+        // Update footer reference if element exists
+        const dataRefEl = document.querySelector("#data-reference .block-body p");
+        if (dataRefEl) {
+          dataRefEl.innerHTML = `Current synchronized renders loaded from <code>data/renders/${this.activeDirectory}</code>. Sequence contains ${this.totalFrames} frames (${(data.duration || 13.89).toFixed(2)}s) starting at frame ${this.startFrame}, evaluated with time synchronization offset &Delta;t = +18.97s against Meta Quest VR 6-DoF ground truth.`;
+        }
+
+        this.updateTimeUI();
+      }
+    } catch (err) {
+      console.log("Using static dataset configuration:", err);
+    }
   }
 
   get v1() {
@@ -396,8 +423,9 @@ export class VideoSyncController {
     const currentTime = forcedTime !== null ? forcedTime : this.masterCurrentTime;
     const duration = this.masterDuration;
 
-    const currentFrame = Math.min(200, Math.floor(currentTime * this.fps) + 1);
-    const totalFrames = 200;
+    const frameOffset = Math.floor(currentTime * this.fps);
+    const currentFrame = Math.min(this.totalFrames, frameOffset + 1);
+    const absoluteFrame = this.startFrame + frameOffset;
 
     const format = (sec) => {
       const m = Math.floor(sec / 60).toString().padStart(2, "0");
@@ -407,7 +435,7 @@ export class VideoSyncController {
 
     const timeDisplay = document.getElementById("time-display");
     if (timeDisplay) {
-      timeDisplay.textContent = `${format(currentTime)} / ${format(duration)} (Frame ${currentFrame.toString().padStart(3, "0")}/${totalFrames})`;
+      timeDisplay.textContent = `${format(currentTime)} / ${format(duration)} (Frame ${currentFrame.toString().padStart(3, "0")}/${this.totalFrames} | #${absoluteFrame})`;
     }
 
     const scrubber = document.getElementById("global-timeline-slider");

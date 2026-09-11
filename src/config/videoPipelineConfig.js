@@ -1,14 +1,14 @@
 /**
  * Video Pipeline Configuration
  * 
- * Defines the available pipelines, stage definitions, step metadata, and video file mappings.
- * Videos are loaded from the latest renders directory: /data/renders
+ * Defines the available pipelines, discrete stages, descriptions, and video mappings.
+ * Renders are dynamically served from the latest timestamped folder in /data/renders (e.g. data/renders/renders_20260911_233706).
  */
 
 export const VIDEO_DATASET_BASE = "/data/renders";
 
 export const PIPELINE_CONFIG = {
-  // Left side: Classical 3D Pipeline
+  // Left side: Classical 3D Pipeline (PnP & EKF)
   pnp3d: {
     id: "pnp3d",
     title: "3D Pipeline",
@@ -19,10 +19,10 @@ export const PIPELINE_CONFIG = {
         id: "regular_video",
         name: "Regular Video",
         shutter: "10,000 µs",
-        description: "10,000 µs ambient visual stream showing full scene environment and tracking rig.",
+        description: "10,000 µs ambient visual stream showing the full room environment and tracking rig.",
         files: {
-          raw: "06_bright_raw.mp4",
-          gt: "07_bright_gt.mp4"
+          raw: "11_bright_raw.mp4",
+          gt: "12_bright_gt.mp4"
         },
         isPlaceholder: false
       },
@@ -41,22 +41,21 @@ export const PIPELINE_CONFIG = {
         id: "filtration",
         name: "Filtration",
         shutter: "1,000 µs",
-        description: "Adaptive thresholding and morphological filtering to isolate active optical IR LED markers.",
+        description: "Multi-stage optical pre-filtration (3x3 Gaussian blur, dynamic peak threshold T>=180, morphological opening) isolating genuine LEDs with zero background noise.",
         files: {
-          raw: "01_dark_raw.mp4",
-          gt: "02_dark_gt.mp4"
+          raw: "03_dark_filtration.mp4",
+          gt: "04_dark_filtration_gt.mp4"
         },
-        isPlaceholder: true,
-        placeholderNote: "Filter mask render in progress"
+        isPlaceholder: false
       },
       {
         id: "blob_detection",
         name: "Blob Detection",
         shutter: "1,000 µs",
-        description: "Sub-pixel centroid localization (green rings) and ellipse contour fitting for optical markers.",
+        description: "Filtered stream with sub-pixel 2D centroid moments: Cyan candidate rings & Top-4 Red tracking markers.",
         files: {
-          raw: "03_dark_blobs.mp4",
-          gt: "03_dark_blobs.mp4"
+          raw: "05_dark_blobs.mp4",
+          gt: "06_dark_blobs_gt.mp4"
         },
         isPlaceholder: false
       },
@@ -64,10 +63,10 @@ export const PIPELINE_CONFIG = {
         id: "pnp",
         name: "PnP",
         shutter: "1,000 µs",
-        description: "Perspective-n-Point 6-DoF rigid body pose estimation ([R | t]) with 3D coordinate axes and motion trails.",
+        description: "SQPnP 6-DoF rigid body pose estimation ([R | t]) with RGB 3D axes, active red markers, and cyan motion trail.",
         files: {
-          raw: "04_dark_pnp.mp4",
-          gt: "05_dark_pnp_gt.mp4"
+          raw: "07_dark_pnp.mp4",
+          gt: "08_dark_pnp_gt.mp4"
         },
         isPlaceholder: false
       },
@@ -75,13 +74,12 @@ export const PIPELINE_CONFIG = {
         id: "ekf",
         name: "EKF",
         shutter: "1,000 µs",
-        description: "Extended Kalman Filter state smoothing incorporating constant-velocity dynamics and jitter suppression.",
+        description: "13-State Extended Kalman Filter constant-velocity state smoothing with RGB 3D axes and bright aqua trajectory trail.",
         files: {
-          raw: "04_dark_pnp.mp4",
-          gt: "05_dark_pnp_gt.mp4"
+          raw: "09_dark_ekf.mp4",
+          gt: "10_dark_ekf_gt.mp4"
         },
-        isPlaceholder: true,
-        placeholderNote: "EKF trajectory render in progress"
+        isPlaceholder: false
       }
     ]
   },
@@ -104,8 +102,8 @@ export const PIPELINE_CONFIG = {
             shutter: "10,000 µs",
             description: "Ambient RGB visual input provided to the neural convolutional feature backbone.",
             files: {
-              raw: "06_bright_raw.mp4",
-              gt: "07_bright_gt.mp4"
+              raw: "11_bright_raw.mp4",
+              gt: "12_bright_gt.mp4"
             },
             isPlaceholder: false
           },
@@ -113,7 +111,7 @@ export const PIPELINE_CONFIG = {
             id: "dark_video",
             name: "Dark Video",
             shutter: "1,000 µs",
-            description: "1,000 µs high-contrast input tensor passed to convolutional layers for marker localization.",
+            description: "1,000 µs high-contrast input tensor passed to convolutional layers for direct marker localization.",
             files: {
               raw: "01_dark_raw.mp4",
               gt: "02_dark_gt.mp4"
@@ -126,8 +124,8 @@ export const PIPELINE_CONFIG = {
             shutter: "1,000 µs",
             description: "Direct 6-DoF pose prediction [q, t] regressed by deep convolutional neural network.",
             files: {
-              raw: "04_dark_pnp.mp4",
-              gt: "05_dark_pnp_gt.mp4"
+              raw: "09_dark_ekf.mp4",
+              gt: "10_dark_ekf_gt.mp4"
             },
             isPlaceholder: true,
             placeholderNote: "CNN checkpoint inference render in progress"
@@ -146,8 +144,8 @@ export const PIPELINE_CONFIG = {
             shutter: "10,000 µs",
             description: "Ambient visual frame capturing scene lighting and background spatial context.",
             files: {
-              raw: "06_bright_raw.mp4",
-              gt: "07_bright_gt.mp4"
+              raw: "11_bright_raw.mp4",
+              gt: "12_bright_gt.mp4"
             },
             isPlaceholder: false
           },
@@ -166,13 +164,12 @@ export const PIPELINE_CONFIG = {
             id: "filtration",
             name: "Filtration",
             shutter: "1,000 µs",
-            description: "Intensity thresholding and spatial bandpass filtering for robust feature extraction.",
+            description: "Optical pre-filtration isolating active optical IR LED emissions.",
             files: {
-              raw: "01_dark_raw.mp4",
-              gt: "02_dark_gt.mp4"
+              raw: "03_dark_filtration.mp4",
+              gt: "04_dark_filtration_gt.mp4"
             },
-            isPlaceholder: true,
-            placeholderNote: "ML pre-processing render in progress"
+            isPlaceholder: false
           },
           {
             id: "blob_detection",
@@ -180,8 +177,8 @@ export const PIPELINE_CONFIG = {
             shutter: "1,000 µs",
             description: "Extracted 2D centroid coordinates and spatial moments compiled into tabular feature vectors.",
             files: {
-              raw: "03_dark_blobs.mp4",
-              gt: "03_dark_blobs.mp4"
+              raw: "05_dark_blobs.mp4",
+              gt: "06_dark_blobs_gt.mp4"
             },
             isPlaceholder: false
           },
@@ -191,8 +188,8 @@ export const PIPELINE_CONFIG = {
             shutter: "1,000 µs",
             description: "Predicted 6-DoF pose output from trained Random Forest / MLP feature regression model.",
             files: {
-              raw: "04_dark_pnp.mp4",
-              gt: "05_dark_pnp_gt.mp4"
+              raw: "09_dark_ekf.mp4",
+              gt: "10_dark_ekf_gt.mp4"
             },
             isPlaceholder: true,
             placeholderNote: "ML regressor output render in progress"
