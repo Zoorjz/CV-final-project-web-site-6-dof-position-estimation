@@ -87,16 +87,17 @@ def draw_3d_axes_clean(
             cv2.line(img, o_pt, a_pt, color, thickness, cv2.LINE_AA)
 
 
-def detect_blobs(gray: np.ndarray, thresh: int, min_area: float = 2.0, max_area: float = 1500.0) -> list[tuple[float, float]]:
-    """Detects sub-pixel centroids of bright optical LED markers."""
+def detect_blobs(gray: np.ndarray, thresh: int, min_area: float = 2.0, max_area: float = 1500.0) -> tuple[np.ndarray, np.ndarray]:
+    """Detects sub-pixel centroids and areas of bright optical LED markers."""
     _, bw = cv2.threshold(gray, thresh, 255, cv2.THRESH_BINARY)
     contours, _ = cv2.findContours(bw, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    pts = []
+    pts, areas = [], []
     for c in contours:
         M = cv2.moments(c)
         if min_area < M["m00"] < max_area:
             pts.append((M["m10"] / M["m00"], M["m01"] / M["m00"]))
-    return pts
+            areas.append(M["m00"])
+    return np.array(pts), np.array(areas)
 
 
 def render_video_variant(
@@ -108,6 +109,7 @@ def render_video_variant(
     show_gt: bool,
     show_trails: bool,
     trail_length: int,
+    trail_thickness: int,
     video_path: str,
     timestamps_path: str,
     gt_pos_rhs: np.ndarray,
@@ -169,15 +171,35 @@ def render_video_variant(
 
         vis = frame.copy()
 
-        # Layer 1: Detected 2D Blobs (Green rings)
-        if show_blobs:
+        # Layer 1: Detected 2D Blobs & PnP Blobs
+        if show_blobs or show_pnp:
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            detected_pts = detect_blobs(gray, thresh=blob_thresh)
-            for cx, cy in detected_pts:
-                cv2.circle(vis, (int(round(cx)), int(round(cy))), 4, (0, 255, 100), 1, cv2.LINE_AA)
-                cv2.circle(vis, (int(round(cx)), int(round(cy))), 1, (0, 255, 100), -1, cv2.LINE_AA)
+            detected_pts, areas = detect_blobs(gray, thresh=blob_thresh)
 
-        # Layer 2: Ground Truth 3D Pose & Reprojections
+            pnp_blob_idx = set()
+            if len(detected_pts) >= 4:
+                top4 = np.argsort(areas)[::-1][:4]
+                pnp_blob_idx = set(top4)
+
+            # Draw general detected candidate blobs in BLUE
+            if show_blobs:
+                for i, (cx, cy) in enumerate(detected_pts):
+                    if i not in pnp_blob_idx:
+                        px, py = int(round(cx)), int(round(cy))
+                        if 0 <= px < width and 0 <= py < height:
+                            cv2.circle(vis, (px, py), 7, (255, 120, 0), 2, cv2.LINE_AA)
+                            cv2.circle(vis, (px, py), 2, (255, 120, 0), -1, cv2.LINE_AA)
+
+            # Draw the 4 blobs used for PnP in RED
+            if (show_blobs or show_pnp) and pnp_blob_idx:
+                for i in pnp_blob_idx:
+                    cx, cy = detected_pts[i]
+                    px, py = int(round(cx)), int(round(cy))
+                    if 0 <= px < width and 0 <= py < height:
+                        cv2.circle(vis, (px, py), 8, (0, 0, 255), 2, cv2.LINE_AA)
+                        cv2.circle(vis, (px, py), 2, (0, 0, 255), -1, cv2.LINE_AA)
+
+        # Layer 2: Ground Truth 3D Pose (Clean 3D axes, NO marker reprojections)
         if show_gt:
             gt_in_bounds = (t_gt >= t_gt_all[0]) and (t_gt <= t_gt_all[-1])
             if gt_in_bounds:
@@ -191,17 +213,7 @@ def render_video_variant(
                 p_gt_cam = R_X @ (R_gt_vr @ t_Y + p_gt_vr) + t_X  # meters
                 tvec_gt_cam_mm = (p_gt_cam * 1000.0).reshape(3, 1)
 
-                rvec_gt_cam, _ = cv2.Rodrigues(R_gt_cam)
-
-                # Reproject GT markers (Magenta circles & crosshairs)
-                proj_gt_markers, _ = cv2.projectPoints(marker_pts_3d, rvec_gt_cam, tvec_gt_cam_mm, K, dist)
-                for pt in proj_gt_markers.reshape(-1, 2):
-                    px, py = int(round(pt[0])), int(round(pt[1]))
-                    if 0 <= px < width and 0 <= py < height:
-                        cv2.circle(vis, (px, py), 5, (255, 0, 220), 1, cv2.LINE_AA)
-                        cv2.drawMarker(vis, (px, py), (255, 0, 220), cv2.MARKER_CROSS, 6, 1)
-
-                # 3D Coordinate Axes (Magenta, Yellow, Cyan)
+                # 3D Coordinate Axes at bar origin (Magenta, Yellow, Cyan)
                 draw_3d_axes_clean(
                     vis, R_gt_cam, tvec_gt_cam_mm, K, dist,
                     axis_length_mm=75.0, thickness=2,
@@ -210,6 +222,7 @@ def render_video_variant(
 
                 # Trail point
                 if show_trails:
+                    rvec_gt_cam, _ = cv2.Rodrigues(R_gt_cam)
                     proj_gt_origin, _ = cv2.projectPoints(np.zeros((1, 3)), rvec_gt_cam, tvec_gt_cam_mm, K, dist)
                     gt_pt_2d = proj_gt_origin.reshape(-1, 2)[0]
                     gt_trail.append((int(gt_pt_2d[0]), int(gt_pt_2d[1])))
@@ -217,7 +230,7 @@ def render_video_variant(
                 if show_trails:
                     gt_trail.append(None)
 
-        # Layer 3: PnP 3D Pose & Reprojections
+        # Layer 3: PnP 3D Pose
         if show_pnp and df_pnp is not None:
             if f_idx < len(df_pnp) and df_pnp['valid'].iloc[f_idx]:
                 row = df_pnp.iloc[f_idx]
@@ -225,13 +238,6 @@ def render_video_variant(
                 q_pnp = np.array([row['qx'], row['qy'], row['qz'], row['qw']])
                 R_pnp_cam = R_scipy.from_quat(q_pnp).as_matrix()
                 rvec_pnp_cam, _ = cv2.Rodrigues(R_pnp_cam)
-
-                # Reproject PnP markers (Cyan rings)
-                proj_pnp_markers, _ = cv2.projectPoints(marker_pts_3d, rvec_pnp_cam, tvec_pnp_mm, K, dist)
-                for pt in proj_pnp_markers.reshape(-1, 2):
-                    px, py = int(round(pt[0])), int(round(pt[1]))
-                    if 0 <= px < width and 0 <= py < height:
-                        cv2.circle(vis, (px, py), 4, (255, 255, 0), 1, cv2.LINE_AA)
 
                 # 3D Coordinate Axes (Red X, Green Y, Blue Z)
                 draw_3d_axes_clean(
@@ -256,23 +262,27 @@ def render_video_variant(
             if len(gt_trail) > trail_length:
                 gt_trail.pop(0)
 
-            # PnP Trail (Cyan fading)
+            # PnP Trail (Bold Cyan fading)
             for tr_i in range(1, len(pnp_trail)):
-                alpha = (tr_i / float(trail_length)) ** 1.5
+                alpha = 0.30 + 0.70 * (tr_i / float(trail_length))
                 if pnp_trail[tr_i - 1] is not None and pnp_trail[tr_i] is not None:
                     p1, p2 = pnp_trail[tr_i - 1], pnp_trail[tr_i]
                     if 0 <= p1[0] < width and 0 <= p1[1] < height and 0 <= p2[0] < width and 0 <= p2[1] < height:
                         col_pnp = (int(255 * alpha), int(220 * alpha), int(50 * alpha))
-                        cv2.line(vis, p1, p2, col_pnp, 1, cv2.LINE_AA)
+                        cv2.line(vis, p1, p2, col_pnp, 3, cv2.LINE_AA)
+                        if tr_i == len(pnp_trail) - 1:
+                            cv2.circle(vis, p2, 4, (255, 220, 50), -1, cv2.LINE_AA)
 
-            # GT Trail (Magenta fading)
+            # GT Trail (Bold Magenta fading)
             for tr_i in range(1, len(gt_trail)):
-                alpha = (tr_i / float(trail_length)) ** 1.5
+                alpha = 0.30 + 0.70 * (tr_i / float(trail_length))
                 if gt_trail[tr_i - 1] is not None and gt_trail[tr_i] is not None:
                     g1, g2 = gt_trail[tr_i - 1], gt_trail[tr_i]
                     if 0 <= g1[0] < width and 0 <= g1[1] < height and 0 <= g2[0] < width and 0 <= g2[1] < height:
                         col_gt = (int(220 * alpha), int(50 * alpha), int(255 * alpha))
-                        cv2.line(vis, g1, g2, col_gt, 1, cv2.LINE_AA)
+                        cv2.line(vis, g1, g2, col_gt, 3, cv2.LINE_AA)
+                        if tr_i == len(gt_trail) - 1:
+                            cv2.circle(vis, g2, 4, (220, 50, 255), -1, cv2.LINE_AA)
 
         writer.write(vis)
 
@@ -352,11 +362,11 @@ def generate_metadata_markdown(
     for v in video_records:
         layers_desc = []
         if v["layers"]["blobs"]:
-            layers_desc.append("2D Blob Centroids (Green)")
+            layers_desc.append("Detected Blobs (Blue) & PnP Blobs (Red)")
         if v["layers"]["pnp"]:
-            layers_desc.append("PnP 3D Pose (RGB) & Reprojections (Cyan)")
+            layers_desc.append("PnP 3D Pose (RGB Axes) & PnP Blobs (Red)")
         if v["layers"]["gt"]:
-            layers_desc.append("VR Ground Truth 3D Pose (Magenta/Yellow)")
+            layers_desc.append("VR Ground Truth 3D Pose (Magenta/Yellow Axes)")
         if v["layers"]["trails"] and (v["layers"]["pnp"] or v["layers"]["gt"]):
             layers_desc.append("3D Trajectory Trails")
         if not layers_desc:
@@ -371,12 +381,11 @@ def generate_metadata_markdown(
 
 ## 3. Visual Layer Color Conventions
 
-* **Green Rings / Dots**: Sub-pixel detected 2D centroids of optical IR LEDs.
+* **Blue Circles / Dots**: Sub-pixel detected 2D centroids of candidate optical IR LEDs.
+* **Red Circles / Dots**: The 4 optical LED blobs selected and actively used for the PnP 6-DoF pose calculation.
 * **RGB Coordinate Axes**: Optical PnP 6-DoF rigid body pose (+X: Red, +Y: Green, +Z: Blue).
-* **Cyan Rings**: 3D Optical marker positions reprojected into camera view via PnP pose.
 * **Cyan Trail**: 3D motion history trail of PnP tracked bar origin.
 * **Magenta / Yellow / Orange Axes**: Transformed VR Ground Truth (Right Controller) 6-DoF pose (+X: Magenta, +Y: Yellow, +Z: Orange).
-* **Magenta Rings & Crosshairs**: 3D Optical marker positions reprojected from VR Ground Truth pose into camera view.
 * **Magenta Trail**: 3D motion history trail of VR Ground Truth bar origin.
 """
 
@@ -401,6 +410,7 @@ def main():
     parser.add_argument("--count", type=int, default=None, help="Number of frames to render (default: all)")
     parser.add_argument("--no-trails", action="store_true", help="Disable fading 3D trajectory trails")
     parser.add_argument("--trail-length", type=int, default=35, help="Length of fading trajectory trail in frames")
+    parser.add_argument("--trail-thickness", type=int, default=3, help="Line thickness for 3D trajectory trails (default: 3)")
     args = parser.parse_args()
 
     # Create timestamped output directory
@@ -461,7 +471,7 @@ def main():
         output_filename=str(out_dir / "01_dark_raw.mp4"),
         stream_type="dark",
         show_blobs=False, show_pnp=False, show_gt=False,
-        show_trails=False, trail_length=args.trail_length,
+        show_trails=False, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
         video_path=args.dark_video, timestamps_path=args.dark_ts,
         gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
         dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
@@ -476,7 +486,7 @@ def main():
         output_filename=str(out_dir / "02_dark_gt.mp4"),
         stream_type="dark",
         show_blobs=False, show_pnp=False, show_gt=True,
-        show_trails=show_trails, trail_length=args.trail_length,
+        show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
         video_path=args.dark_video, timestamps_path=args.dark_ts,
         gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
         dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
@@ -491,7 +501,7 @@ def main():
         output_filename=str(out_dir / "03_dark_blobs.mp4"),
         stream_type="dark",
         show_blobs=True, show_pnp=False, show_gt=False,
-        show_trails=False, trail_length=args.trail_length,
+        show_trails=False, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
         video_path=args.dark_video, timestamps_path=args.dark_ts,
         gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
         dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
@@ -506,7 +516,7 @@ def main():
         output_filename=str(out_dir / "04_dark_pnp.mp4"),
         stream_type="dark",
         show_blobs=False, show_pnp=True, show_gt=False,
-        show_trails=show_trails, trail_length=args.trail_length,
+        show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
         video_path=args.dark_video, timestamps_path=args.dark_ts,
         gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
         dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
@@ -521,7 +531,7 @@ def main():
         output_filename=str(out_dir / "05_dark_pnp_gt.mp4"),
         stream_type="dark",
         show_blobs=False, show_pnp=True, show_gt=True,
-        show_trails=show_trails, trail_length=args.trail_length,
+        show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
         video_path=args.dark_video, timestamps_path=args.dark_ts,
         gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
         dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
@@ -536,7 +546,7 @@ def main():
         output_filename=str(out_dir / "06_bright_raw.mp4"),
         stream_type="bright",
         show_blobs=False, show_pnp=False, show_gt=False,
-        show_trails=False, trail_length=args.trail_length,
+        show_trails=False, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
         video_path=args.bright_video, timestamps_path=args.bright_ts,
         gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
         dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
@@ -551,7 +561,7 @@ def main():
         output_filename=str(out_dir / "07_bright_gt.mp4"),
         stream_type="bright",
         show_blobs=False, show_pnp=False, show_gt=True,
-        show_trails=show_trails, trail_length=args.trail_length,
+        show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
         video_path=args.bright_video, timestamps_path=args.bright_ts,
         gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
         dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,

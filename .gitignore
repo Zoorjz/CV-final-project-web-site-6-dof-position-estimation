@@ -1,0 +1,20 @@
+# Ignore generated artifacts and renders in data/
+data/*
+!data/GT_pos/
+!data/GT_videos/
+!data/camera_calibration.yaml
+!data/geometry.yaml
+
+# Python cache & environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
