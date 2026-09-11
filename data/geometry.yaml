@@ -1,0 +1,26 @@
+rigid_body: training_bar
+
+units: mm
+
+coordinate_system:
+  origin: center_of_bar
+  x_axis: "along the length of the bar + goes to the side witout marker"
+  y_axis: " + goes up to the side with marker having long pole"
+  z_axis: "plus goes from global origin to the all markers"
+
+markers:
+  - id: M1
+    position: [-13.2, -53.0, 26.32]
+    note: small_bottom
+
+  - id: M2
+    position: [16.0, 77.8, 13.32]
+    note: long_top
+
+  - id: M3
+    position: [-260.0, 0.0, 0.0]
+    note: far_away
+
+  - id: M4
+    position: [-60.2, 21.0, 57.5]
+    note: to_the_side

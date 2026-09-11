@@ -1,0 +1,16 @@
+{
+    "sequences": [
+        {
+            "sequenceId": "seq_0001",
+            "utcStart": "2026-09-11T13:06:10.3533800Z",
+            "utcStop": "2026-09-11T13:07:52.2907409Z",
+            "startTimestampSeconds": 31.513989203572237,
+            "stopTimestampSeconds": 133.451026703573,
+            "firstSampleId": 1,
+            "lastSampleId": 7322,
+            "sampleCount": 7322,
+            "valid": true,
+            "invalidReason": ""
+        }
+    ]
+}

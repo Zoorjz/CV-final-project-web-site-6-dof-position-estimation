@@ -1,0 +1,28 @@
+image_width: 1280
+image_height: 800
+board:
+  squares_x: 7
+  squares_y: 5
+  square_length_m: 0.0375
+  marker_length_m: 0.02785
+  dictionary: DICT_4X4_50
+camera_matrix:
+- - 1101.3598306026063
+  - 0.0
+  - 707.1420999059369
+- - 0.0
+  - 1099.930772731189
+  - 421.4184326273606
+- - 0.0
+  - 0.0
+  - 1.0
+distortion_coefficients:
+- -0.44884431174949246
+- 0.26110534093806004
+- -0.0006470250983669491
+- 0.0001500664705693095
+- -0.08530481105961502
+calibration_rms: 0.28310482383589647
+number_input_images: 28
+number_used_images: 28
+mean_reprojection_rmse_px: 0.2559300831386021

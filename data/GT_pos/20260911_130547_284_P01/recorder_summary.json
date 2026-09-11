@@ -1,0 +1,18 @@
+{
+    "sessionId": "20260911_130547_284_P01",
+    "utcStart": "2026-09-11T13:05:47.2853284Z",
+    "utcStop": "2026-09-11T13:07:54.4356115Z",
+    "sequencesStarted": 1,
+    "acceptedSamples": 7322,
+    "writtenRows": 7322,
+    "validPairSamples": 7322,
+    "invalidLeftSamples": 0,
+    "invalidRightSamples": 0,
+    "invalidPairSamples": 0,
+    "leftControllerDisconnects": 0,
+    "rightControllerDisconnects": 0,
+    "trackingOriginChanges": 0,
+    "queueOverflows": 0,
+    "writerError": "",
+    "metadataError": ""
+}

@@ -1,0 +1,15 @@
+{
+    "sessionId": "20260911_130547_284_P01",
+    "participantId": "P01",
+    "exerciseName": "demo test",
+    "utcStart": "2026-09-11T13:05:47.2853284Z",
+    "unityVersion": "6000.6.0f1",
+    "platform": "WindowsEditor",
+    "controllerHands": "Left,Right",
+    "samplingSource": "Application.onBeforeRender",
+    "csvSchemaVersion": "dual_controller_raw_v1",
+    "utcAnchor": "2026-09-11T13:05:47.2853284Z",
+    "unityRealtimeAnchorSeconds": 8.445216303572579,
+    "timeBasis": "Time.realtimeSinceStartupAsDouble captured once before both controller reads.",
+    "coordinateConvention": "Raw Unity/OpenXR tracking-origin coordinates; positions in metres and rotations as normalized quaternions"
+}
