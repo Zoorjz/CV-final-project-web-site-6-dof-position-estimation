@@ -29,6 +29,8 @@ from __future__ import annotations
 import argparse
 import itertools
 import json
+import os
+import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
@@ -293,6 +295,24 @@ def render_video_variant(
     cap.release()
     writer.release()
 
+    # Convert to web-compatible H.264 (yuv420p + faststart) if ffmpeg is available
+    temp_h264 = output_filename.replace(".mp4", "_temp_h264.mp4")
+    cmd = [
+        "ffmpeg", "-y", "-i", output_filename,
+        "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+        "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+        temp_h264
+    ]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode == 0 and os.path.exists(temp_h264):
+            time.sleep(0.05)
+            os.remove(output_filename)
+            os.rename(temp_h264, output_filename)
+            print(f"    [Web Codec] Converted {Path(output_filename).name} to H.264 (yuv420p)")
+    except Exception as e:
+        print(f"    [Warning] Failed to re-encode {Path(output_filename).name} to H.264: {e}")
+
     return {
         "filename": Path(output_filename).name,
         "stream": stream_type,
@@ -405,7 +425,7 @@ def main():
     parser.add_argument("--calib", type=str, default=str(ROOT / "data" / "camera_calibration.yaml"))
     parser.add_argument("--geometry", type=str, default=str(ROOT / "data" / "geometry.yaml"))
     parser.add_argument("--alignment-json", type=str, default=str(ROOT / "data" / "alignment_calibration.json"))
-    parser.add_argument("--out-dir", type=str, default=None, help="Custom output folder path (defaults to data/renders_YYYYMMDD_HHMMSS/)")
+    parser.add_argument("--out-dir", type=str, default=str(ROOT / "data" / "renders"), help="Custom output folder path (defaults to data/renders/)")
     parser.add_argument("--start", type=int, default=0, help="Start frame index")
     parser.add_argument("--count", type=int, default=None, help="Number of frames to render (default: all)")
     parser.add_argument("--no-trails", action="store_true", help="Disable fading 3D trajectory trails")
@@ -413,9 +433,9 @@ def main():
     parser.add_argument("--trail-thickness", type=int, default=3, help="Line thickness for 3D trajectory trails (default: 3)")
     args = parser.parse_args()
 
-    # Create timestamped output directory
+    # Create output directory
     timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_dir = Path(args.out_dir) if args.out_dir else ROOT / "data" / f"renders_{timestamp_str}"
+    out_dir = Path(args.out_dir) if args.out_dir else ROOT / "data" / "renders"
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"[Init] Output directory initialized at: {out_dir}")
 

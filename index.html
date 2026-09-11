@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>6-DoF Rigid Body Tracking & Benchmark | CV Final Project</title>
+  <meta name="description" content="Interactive project report and dual-pipeline synchronized comparison for 6-DoF rigid body tracking using classical PnP/EKF versus deep learning architectures." />
+
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="/src/styles/main.css" />
+  <link rel="stylesheet" href="/src/styles/presentation.css" />
+  <link rel="stylesheet" href="/src/styles/comparison.css" />
+  <link rel="stylesheet" href="/src/styles/components.css" />
+</head>
+<body>
+  <!-- Sticky Navigation Header -->
+  <header class="site-header">
+    <div class="header-container">
+      <a href="#" class="brand-group">
+        <div class="brand-icon">6D</div>
+        <div>
+          <span class="brand-text">6-DoF Tracking Benchmark</span>
+          <span class="brand-subtext">| CV Final Project</span>
+        </div>
+      </a>
+      <nav>
+        <ul class="nav-links">
+          <li><a href="#presentation-root" class="nav-link">Project Report</a></li>
+          <li><a href="#comparison-section" class="nav-link active-link">Interactive Comparison</a></li>
+          <li><a href="#data-reference" class="nav-link">Dataset Specs</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-content">
+    
+    <!-- Part 1: Data-Driven Presentation & Report Section -->
+    <div id="presentation-root" class="presentation-container">
+      <!-- Injected dynamically via PresentationRenderer.js from reportContent.js -->
+    </div>
+
+    <!-- Part 2: Interactive Synchronized Comparison Section -->
+    <section id="comparison-section" class="comparison-section">
+      <div class="section-anchor-header">
+        <h2>Interactive Pipeline Comparison</h2>
+        <div class="section-divider-line"></div>
+      </div>
+
+      <div class="comparison-wrapper">
+        <!-- Master Video Synchronization Control Bar -->
+        <div id="sync-control-bar"></div>
+
+        <!-- Dual Side-by-Side Video Players Grid -->
+        <div class="comparison-players-grid">
+          <!-- Left: 3D Pipeline (PnP) -->
+          <div id="player-pnp-container"></div>
+
+          <!-- Right: Data Driven Pipeline (CNN / ML) -->
+          <div id="player-data-container"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Dataset & Specifications Footer Reference -->
+    <section id="data-reference" class="presentation-block" style="margin-top: 48px;">
+      <div class="block-inner">
+        <span class="block-tag">Active Dataset</span>
+        <h3 class="block-title">Dataset Renders & Alignment Specifications</h3>
+        <div class="block-body">
+          <p>
+            Current synchronized renders loaded from <code>data/renders</code>. Sequences contain 200 high-resolution frames (5.56s) evaluated with time synchronization offset &Delta;t = +18.97s against Meta Quest VR 6-DoF ground truth.
+          </p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Site Footer -->
+  <footer class="site-footer">
+    <div class="footer-container">
+      <p>&copy; 2026 Computer Vision Final Project — UTN Studies. Built with Vite & Vanilla JS.</p>
+      <div class="footer-links">
+        <a href="#presentation-root">Back to Top</a>
+        <a href="#comparison-section">Interactive Player</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Application Bootstrap -->
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
