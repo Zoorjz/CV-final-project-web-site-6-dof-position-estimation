@@ -205,13 +205,25 @@ export class PresentationRenderer {
     `;
   }
 
+  resolveAssetUrl(src) {
+    if (!src) return "";
+    if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("data:")) {
+      return src;
+    }
+    const rawBase = import.meta.env.BASE_URL || "./";
+    const basePrefix = rawBase.endsWith("/") ? rawBase : `${rawBase}/`;
+    const cleanSrc = src.startsWith("/") ? src.slice(1) : src;
+    return `${basePrefix}${cleanSrc}`;
+  }
+
   renderMedia(image, isLarge = false, extraClass = "") {
     if (!image) return "";
     const cropClass = image.isEnlargedCrop ? "figure-crop-zoom" : "";
+    const resolvedSrc = this.resolveAssetUrl(image.src);
     return `
       <figure class="block-figure ${isLarge ? "figure-large" : ""} ${extraClass} ${cropClass}">
         <div class="figure-img-wrapper">
-          <img src="${image.src}" alt="${image.alt || ""}" loading="lazy" class="figure-image" />
+          <img src="${resolvedSrc}" alt="${image.alt || ""}" loading="lazy" class="figure-image" />
         </div>
         ${image.caption ? `<figcaption class="figure-caption">${image.caption}</figcaption>` : ""}
       </figure>
