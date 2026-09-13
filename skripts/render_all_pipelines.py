@@ -67,6 +67,8 @@ def main():
     parser.add_argument("--ekf-r-scale", type=float, default=1.0, help="EKF measurement noise multiplier")
     parser.add_argument("--ekf-q-scale", type=float, default=1.0, help="EKF process dynamics noise multiplier")
 
+    parser.add_argument("--publish-to-web", action="store_true", help="Automatically copy rendered videos to public/data/renders and update public/api/dataset-info.json for GitHub Pages deployment")
+
     args = parser.parse_args()
 
     t_start = time.time()
@@ -79,10 +81,14 @@ def main():
     print(f"  Target Frames : {args.start} .. {args.start + args.count - 1} ({args.count} frames)")
     print(f"  Active Mode   : {args.pipeline.upper()}")
     print(f"  Timestamp     : {timestamp_str}")
+    if args.publish_to_web:
+        print(f"  Web Publish   : ENABLED (Syncing to public/data/renders/)")
     print("=" * 65 + "\n")
 
     rendered_geom = False
     rendered_data = False
+    geom_dir = None
+    dd_dir = None
 
     # 1. Run Geometry-Based Pipeline (render_aligned_video.py)
     if args.pipeline in ["all", "geometry"]:
@@ -133,6 +139,51 @@ def main():
             sys.exit(code)
         rendered_data = True
 
+    # 3. Publish to web (public/data/renders) if requested
+    if args.publish_to_web:
+        import shutil
+        import json
+        
+        pub_renders = ROOT / "public" / "data" / "renders"
+        pub_geom = pub_renders / "geometry-based"
+        pub_dd = pub_renders / "data-driven"
+        pub_geom.mkdir(parents=True, exist_ok=True)
+        pub_dd.mkdir(parents=True, exist_ok=True)
+        
+        if rendered_geom and geom_dir and geom_dir.exists():
+            for mp4 in geom_dir.glob("*.mp4"):
+                shutil.copy2(mp4, pub_geom / mp4.name)
+            readme = geom_dir / "README.md"
+            if readme.exists():
+                shutil.copy2(readme, pub_geom / "README.md")
+            print(f"[Web Publish] Copied geometry renders to {pub_geom}")
+
+        if rendered_data and dd_dir and dd_dir.exists():
+            for mp4 in dd_dir.glob("*.mp4"):
+                shutil.copy2(mp4, pub_dd / mp4.name)
+            readme = dd_dir / "README.md"
+            if readme.exists():
+                shutil.copy2(readme, pub_dd / "README.md")
+            print(f"[Web Publish] Copied data-driven renders to {pub_dd}")
+
+        # Update dataset-info.json
+        info_json_path = ROOT / "public" / "api" / "dataset-info.json"
+        info_json_path.parent.mkdir(parents=True, exist_ok=True)
+        fps = 35.997
+        duration = args.count / fps
+        metadata = {
+            "activeDirectory": f"renders_{timestamp_str}",
+            "timestamp": timestamp_str,
+            "frameCount": args.count,
+            "duration": round(duration, 2),
+            "startFrame": args.start,
+            "fps": round(fps, 3),
+            "timeSyncOffset": 18.97
+        }
+        with open(info_json_path, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2)
+        print(f"[Web Publish] Updated {info_json_path}")
+
     total_time = time.time() - t_start
     print("\n" + "=" * 65)
     print("  ALL REQUESTED PIPELINES SUCCESSFULLY RENDERED & ENCODED")
@@ -142,6 +193,9 @@ def main():
         print(f"  Geometry-Based Output : {ROOT / 'data' / 'renders' / 'geometry-based' / f'renders_{timestamp_str}'}")
     if rendered_data:
         print(f"  Data-Driven Output    : {ROOT / 'data' / 'renders' / 'data-driven' / f'renders_{timestamp_str}'}")
+    if args.publish_to_web:
+        print(f"  Web Public Directory  : {ROOT / 'public' / 'data' / 'renders'}")
+        print("  -> Ready to commit and deploy via: git add public/ && git commit -m 'Update web renders'")
     print("=" * 65 + "\n")
 
 

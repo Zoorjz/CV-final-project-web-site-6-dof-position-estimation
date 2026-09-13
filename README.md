@@ -1,58 +1,125 @@
 # 6-DoF Rigid Body Tracking — Web Presentation & Comparison Platform
 
-An interactive, data-driven research presentation and dual-pipeline synchronized video comparison tool for evaluating **6-DoF Rigid Body Optical Tracking (Classical PnP / EKF)** against **Data-Driven Deep Learning Pipelines (CNN / ML)**.
+An interactive, data-driven research presentation and dual-pipeline synchronized video comparison tool for evaluating **6-DoF Rigid Body Optical Tracking (Classical SQPnP & 13-State EKF)** against **Data-Driven Pipelines (Deep CNN & Machine Learning Feature Regressors)**.
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start & Prerequisites
 
 ### 1. Prerequisites
-- **Node.js**: v18+ (tested on Node v22.17.0)
-- **Python**: 3.10+ (with OpenCV, NumPy, SciPy, Pandas, PyYAML)
-- **FFmpeg**: Required for automated browser-compatible H.264 video rendering
+* **Web Frontend / Server:**
+  * **Node.js**: `v18.x` or higher (tested on Node `v20` / `v22`)
+  * **npm**: `v9.x` or higher (bundled with Node.js)
+* **Video Rendering Scripts (Optional / for offline generation only):**
+  * **Python**: `3.10+` with `opencv-python`, `numpy`, `scipy`, `pandas`, `pyyaml`, `torch`
+  * **FFmpeg**: Configured with `libx264` support for automated web H.264 video encoding
 
-### 2. Install & Launch Web Application
+---
+
+### 2. Starting the Local Development Server
+
 ```bash
-# Install dependencies
+# 1. Install frontend dependencies
 npm install
 
-# Start Vite development server
+# 2. Start the local development server (Vite)
 npm run dev
+```
+
+The terminal will launch the local development server:
+```
+  VITE v5.4.21  ready in 180 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
 ```
 Open **`http://localhost:5173/`** in your browser.
 
-### 3. (Optional) Generate New Dataset Renders
-To re-render tracking videos across all 12 pipeline combinations:
+---
+
+### 3. Building and Previewing the Production Bundle
+
+To test the optimized static production build locally:
+
 ```bash
-# Render 500 frames starting at frame 2200 into data/renders/renders_YYYYMMDD_HHMMSS/
-python skripts/render_aligned_video.py --start 2200 --count 500
+# Build the production bundle into dist/
+npm run build
+
+# Preview the built static site locally
+npm run preview
 ```
-> [!NOTE]
-> The website server automatically detects and serves the newest timestamped `renders_YYYYMMDD_HHMMSS` directory inside `data/renders/`.
 
 ---
 
-## 🌟 Key Features
+## 🌐 Deploying to GitHub Pages (Option A: Automated GitHub Actions)
 
-### 1. Data-Driven Presentation & Report
-- **Modular JS Configuration**: All report content, figures, and benchmark metrics are defined in [`src/config/reportContent.js`](./src/config/reportContent.js).
-- **Responsive Alternating Layouts**:
-  - `hero`: Title banner with real calibration error statistics (**18.84 mm** position, **3.55°** angular, $\Delta t = +18.97\text{ s}$).
-  - `image-right` / `image-left`: Two-column split grids combining narrative text with research figures.
-  - `image-bottom`: Full-width visual analysis card displaying multi-axis error and trajectory distributions.
+This repository is configured with an automated **GitHub Actions** workflow ([`.github/workflows/deploy.yml`](./.github/workflows/deploy.yml)). Whenever you push commits to the `master` or `main` branch, GitHub Actions builds and publishes the website automatically.
 
-### 2. Dual Synchronized Video Comparison
-- **Side-by-Side Dual Players**:
-  - **Left Player (3D Classical Pipeline)**: 6 discrete stages (*Regular Video*, *Short Shutter Video*, *Filtration*, *Blob Detection*, *PnP*, *EKF*).
-  - **Right Player (Data Driven Pipeline)**: Dropdown switcher supporting **CNN** (3 stages) and **ML** (5 stages).
-- **Interactive Discrete Timeline Sliders**: Clickable tick marks for every stage; dynamically reveals the stage title, exposure pill, description, and status notices.
-- **Bi-Directional Video Sync**:
-  - Master Play/Pause with Spacebar shortcut.
-  - Sub-frame continuous drift correction loop (150ms interval).
-  - Frame-accurate stepping (`-1 Fr` / `+1 Fr` at ~36 fps).
-  - Multi-speed playback (`0.25x`, `0.5x`, `1.0x`, `1.5x`, `2.0x`).
-  - Seamless state preservation across stage, dropdown, and Ground Truth switches.
-- **Global Ground Truth Toggle**: Single switch simultaneously enables the Meta Quest VR Ground Truth 6-DoF pose overlay across both pipelines.
+### Enabling GitHub Pages in your Repository:
+1. Open your GitHub repository in your browser.
+2. Navigate to **Settings** $\rightarrow$ **Pages** (under "Code and automation").
+3. Under **Build and deployment**:
+   * Set **Source** to **`GitHub Actions`**.
+4. Push your code:
+   ```bash
+   git add .
+   git commit -m "Configure GitHub Pages deployment"
+   git push origin master
+   ```
+5. Your website will be live in ~30 seconds at:
+   `https://<your-github-username>.github.io/<repository-name>/`
+
+---
+
+## 🎬 How to Render New Videos & Update the Website
+
+When you train new models, tune Kalman filters, or re-run video tracking benchmarks:
+
+### One-Step Render & Web Sync:
+Run the master orchestrator script with the `--publish-to-web` flag:
+
+```bash
+# Render all pipelines (Classical PnP/EKF + CNN + ML) for 3000 frames and sync to web assets
+python skripts/render_all_pipelines.py --start 1250 --count 3000 --publish-to-web
+```
+
+### What `--publish-to-web` does:
+1. Generates 28 web-optimized `.mp4` video files re-encoded in **H.264 (`yuv420p` / `+faststart`)**.
+2. Automatically copies the videos into `public/data/renders/geometry-based/` and `public/data/renders/data-driven/`.
+3. Updates `public/api/dataset-info.json` with new frame counts, duration, and timestamps.
+
+### Publishing Updated Videos:
+Simply commit and push:
+```bash
+git add public/data/renders/ public/api/dataset-info.json
+git commit -m "Update benchmark videos with newly tuned EKF parameters"
+git push origin master
+```
+GitHub Actions will automatically re-build and deploy the updated video set to GitHub Pages!
+
+---
+
+## 🌟 Key Features & Architecture
+
+### 1. Data-Driven Research Presentation
+* **Config-Driven Content**: All research narrative, figures, and benchmark statistics are centrally defined in [`src/config/reportContent.js`](./src/config/reportContent.js).
+* **Responsive Visual Blocks**:
+  * `hero`: Dynamic title header with real calibration error statistics (**18.84 mm** median 3D position error, **3.55°** angular, $\Delta t = +18.97\text{ s}$).
+  * `image-right` / `image-left`: Multi-column cards pairing academic explanations with trajectory and error figures.
+  * `image-bottom`: High-resolution figures displaying multi-axis residual distributions and tracking charts.
+
+### 2. Bi-Directional Synchronized Comparison Engine
+* **Side-by-Side Dual Players**:
+  * **Left Player (Classical Geometry-based)**: Discrete slider stages (*Long Exposure*, *Short Exposure*, *Filtration*, *Blob Detection*, *PnP*, *EKF*).
+  * **Right Player (Data-Driven)**: Interactive dropdown switcher for **CNN** (4 stages) and **ML Regressor** (6 stages).
+* **Frame-Accurate Synchronization**:
+  * Master Play / Pause coordination (`Spacebar` shortcut).
+  * Continuous drift correction loop ($< 50\text{ ms}$ tolerance).
+  * Discrete stage slider with click-to-snap navigation.
+  * Frame stepper (`-1 Frame` / `+1 Frame` at ~36 fps) with `Left`/`Right` arrow keys.
+  * Variable playback speed (`0.25x`, `0.5x`, `1.0x`, `1.5x`, `2.0x`).
+  * State preservation across pipeline switches, slider moves, and ground truth toggles.
+* **Global Ground Truth Toggle**: Single switch simultaneously displays the Meta Quest VR Ground Truth 6-DoF pose overlay on both players.
 
 ---
 
@@ -60,89 +127,48 @@ python skripts/render_aligned_video.py --start 2200 --count 500
 
 ```
 web-site/
-├── README.md                            # General project & user documentation
-├── AGENTS.md                            # Deep architectural guide for developers & AI coding agents
-├── index.html                           # Semantic HTML5 application entry point
-├── package.json                         # Node dependencies & Vite build scripts
-├── vite.config.js                       # Vite server with dynamic dataset discovery & range streaming
+├── .github/
+│   └── workflows/
+│       └── deploy.yml                   # Automated GitHub Actions deployment to GitHub Pages
+├── README.md                            # Setup guide and user documentation
+├── AGENTS.md                            # Developer reference manual & architecture specification
+├── index.html                           # Semantic HTML5 web application entry point
+├── package.json                         # Node dependencies and build scripts
+├── vite.config.js                       # Vite configuration with relative base './' for static hosting
+├── public/                              # Static public assets (bundled directly into dist/)
+│   ├── api/
+│   │   └── dataset-info.json            # Static sequence metadata (frames, fps, timestamps)
+│   ├── assets/                          # Alignment and calibration plot images
+│   ├── images/                          # Presentation figures and animation GIFs
+│   └── data/
+│       └── renders/
+│           ├── geometry-based/          # 12 Classical SQPnP + 13-State EKF video tracks (.mp4)
+│           └── data-driven/             # 16 CNN & ML Regressor video tracks (.mp4)
 ├── src/
-│   ├── main.js                          # Application bootstrap
+│   ├── main.js                          # Web application bootstrap orchestrator
 │   ├── config/
-│   │   ├── reportContent.js             # Data-driven presentation blocks (text, figures, stats)
-│   │   └── videoPipelineConfig.js       # Pipeline stages, video mapping, and fallback metadata
+│   │   ├── reportContent.js             # Presentation report cards configuration
+│   │   └── videoPipelineConfig.js       # Discrete pipeline stages and video URL resolver
 │   ├── components/
-│   │   ├── PresentationRenderer.js      # Dynamic report presentation block generator
-│   │   ├── VideoPlayer.js               # Discrete stage slider & video player component
-│   │   └── VideoSyncController.js       # Dual-video synchronization, timeline & drift controller
+│   │   ├── PresentationRenderer.js      # Dynamic report card generator
+│   │   ├── VideoPlayer.js               # Discrete tick slider & pipeline video card
+│   │   └── VideoSyncController.js       # Bi-directional dual video sync & drift engine
 │   ├── utils/
-│   │   └── videoPreloader.js            # Video track preloader for instant transitions
+│   │   └── videoPreloader.js            # Video track background preloader
 │   └── styles/
-│       ├── main.css                     # Academic design tokens, typography, and base layout
+│       ├── main.css                     # Global reset, typography, and layout tokens
 │       ├── presentation.css             # Presentation card grids and figure styling
-│       ├── comparison.css               # Dual video player, slider ticks, and control panel
-│       └── components.css               # Buttons, switches, and helper utilities
-├── data/
-│   ├── renders/                         # Active dataset renders (e.g. renders_20260911_233706)
-│   ├── GT_pos/                          # VR Ground Truth trajectories (.csv)
-│   ├── GT_videos/                       # Dual-exposure raw optical footage (.mkv / .csv)
-│   ├── camera_calibration.yaml          # Camera intrinsic matrix & distortion coefficients
-│   ├── geometry.yaml                    # 3D rigid body optical marker coordinates
-│   └── alignment_calibration.json       # Spatial extrinsics & temporal synchronization offset
+│       ├── comparison.css               # Dual player cards, sliders, and sync control panel
+│       └── components.css               # Badges, switches, and UI buttons
 └── skripts/
-    ├── render_aligned_video.py          # 12-layer video rendering & H.264 conversion engine
-    ├── align_gt_and_pnp.py              # Multi-sensor spatial/temporal calibration solver
-    └── pnp_ekf_pipeline.py              # PnP pose extraction & EKF smoothing algorithm
+    ├── render_all_pipelines.py          # Master renderer with --publish-to-web support
+    ├── render_aligned_video.py          # Geometry-based PnP/EKF video generator
+    └── visualize_predictions.py         # CNN & ML data-driven video generator
 ```
 
 ---
 
-## 🎬 Video Dataset & Processing Pipeline
+## 📄 License & Academic Reference
+Developed as part of the **Computer Vision Final Project — UTN Studies (2026)**.  
+Built with Vite, Vanilla JavaScript (ESM), HTML5 `<video>`, and CSS custom properties.
 
-The dataset in `data/renders/` includes 12 synchronized render streams for each sequence:
-
-| Filename | Shutter | Pipeline Stage Description |
-| :--- | :--- | :--- |
-| `01_dark_raw.mp4` | 1000 µs | Raw optical footage (no overlays) |
-| `02_dark_gt.mp4` | 1000 µs | Raw dark footage + VR Ground Truth 6-DoF pose |
-| `03_dark_filtration.mp4` | 1000 µs | Optical pre-filtration (noise eliminated, pure LEDs, no markers) |
-| `04_dark_filtration_gt.mp4` | 1000 µs | Filtered optical footage + VR Ground Truth 6-DoF pose |
-| `05_dark_blobs.mp4` | 1000 µs | Filtered backdrop + 2D sub-pixel centroids (Cyan candidates & Red PnP) |
-| `06_dark_blobs_gt.mp4` | 1000 µs | Filtered backdrop + 2D blobs + VR Ground Truth 6-DoF pose |
-| `07_dark_pnp.mp4` | 1000 µs | Filtered backdrop + SQPnP 3D pose (RGB axes) & cyan trajectory trail |
-| `08_dark_pnp_gt.mp4` | 1000 µs | Filtered backdrop + Raw PnP 3D pose + VR Ground Truth 3D pose |
-| `09_dark_ekf.mp4` | 1000 µs | Filtered backdrop + 13-State EKF Smoothed 3D pose & bright aqua trail |
-| `10_dark_ekf_gt.mp4` | 1000 µs | Filtered backdrop + EKF Smoothed 3D pose + VR Ground Truth 3D pose |
-| `11_bright_raw.mp4` | 10000 µs | Ambient visual raw footage (no overlays) |
-| `12_bright_gt.mp4` | 10000 µs | Ambient visual raw footage + VR Ground Truth 6-DoF pose |
-
----
-
-## 🛠️ Modifying & Extending the Platform
-
-### Adding a Report Section
-Edit [`src/config/reportContent.js`](./src/config/reportContent.js) and append an item to `reportBlocks`:
-```javascript
-{
-  id: "error-breakdown",
-  layout: "image-right", // Options: "image-right", "image-left", "image-bottom"
-  tag: "Error Analysis",
-  title: "Occlusion & Robustness Evaluation",
-  content: ["Description text..."],
-  highlights: ["Takeaway 1", "Takeaway 2"],
-  image: {
-    src: "/assets/my_figure.png",
-    caption: "Figure X: Analysis caption."
-  }
-}
-```
-
-### Adding a New Model or Pipeline Stage
-Edit [`src/config/videoPipelineConfig.js`](./src/config/videoPipelineConfig.js):
-- Add your stage object to `PIPELINE_CONFIG.pnp3d.stages` or under `PIPELINE_CONFIG.dataDriven.modes`.
-- Map the `raw` and `gt` filenames located in `data/renders/`.
-
----
-
-## 📄 License & Credits
-Developed as part of the **Computer Vision Final Project — UTN Studies (2026)**.
-Built with Vite, Vanilla JavaScript, HTML5 Video, and CSS custom properties.

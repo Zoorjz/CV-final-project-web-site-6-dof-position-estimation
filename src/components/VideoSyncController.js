@@ -37,8 +37,15 @@ export class VideoSyncController {
   }
 
   async fetchDatasetMetadata() {
+    const rawBase = import.meta.env.BASE_URL || "./";
+    const basePrefix = rawBase.endsWith("/") ? rawBase : `${rawBase}/`;
+    const staticJsonUrl = `${basePrefix}api/dataset-info.json`;
+
     try {
-      const res = await fetch("/api/dataset-info");
+      let res = await fetch(staticJsonUrl);
+      if (!res.ok) {
+        res = await fetch("/api/dataset-info");
+      }
       if (res.ok) {
         const data = await res.json();
         if (data.frameCount) this.totalFrames = data.frameCount;
@@ -49,7 +56,9 @@ export class VideoSyncController {
         // Update footer reference if element exists
         const dataRefEl = document.querySelector("#data-reference .block-body p");
         if (dataRefEl) {
-          dataRefEl.innerHTML = `Current synchronized renders loaded from <code>data/renders/${this.activeDirectory}</code>. Sequence contains ${this.totalFrames} frames (${(data.duration || 13.89).toFixed(2)}s) starting at frame ${this.startFrame}, evaluated with time synchronization offset &Delta;t = +18.97s against Meta Quest VR 6-DoF ground truth.`;
+          const dur = (data.duration || (this.totalFrames / this.fps)).toFixed(2);
+          const offset = (data.timeSyncOffset !== undefined ? data.timeSyncOffset : 18.97).toFixed(2);
+          dataRefEl.innerHTML = `Current synchronized renders loaded from <code>public/data/renders/</code>. Sequence contains ${this.totalFrames} frames (${dur}s) starting at frame ${this.startFrame}, evaluated with time synchronization offset &Delta;t = +${offset}s against Meta Quest VR 6-DoF ground truth.`;
         }
 
         this.updateTimeUI();

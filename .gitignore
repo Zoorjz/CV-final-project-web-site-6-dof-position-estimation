@@ -1,4 +1,10 @@
-# Ignore generated artifacts and renders in data/
+# Node / Build artifacts
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Ignore generated artifacts and intermediate renders in data/
 data/*
 !data/GT_pos/
 !data/GT_videos/
