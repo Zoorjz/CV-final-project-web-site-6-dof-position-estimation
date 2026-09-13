@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+a#!/usr/bin/env python3
 """render_aligned_video.py
 
 Generates synchronized benchmark video combinations without on-screen text overlays,
@@ -93,6 +93,59 @@ def draw_3d_axes_clean(
         a_pt = tuple(axis_pt.astype(int))
         if 0 <= o_pt[0] < w and 0 <= o_pt[1] < h and -200 <= a_pt[0] < w + 200 and -200 <= a_pt[1] < h + 200:
             cv2.line(img, o_pt, a_pt, color, thickness, cv2.LINE_AA)
+
+
+def draw_trail_legend(
+    vis: np.ndarray,
+    items: list[tuple[str, tuple[int, int, int]]],
+    margin_right: int = 12,
+    margin_bottom: int = 12
+) -> None:
+    """Draws a clean, semi-transparent legend overlay on the bottom-right corner."""
+    if not items:
+        return
+
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.38
+    font_thickness = 1
+    line_h = 16
+    pad_x = 8
+    pad_y = 6
+    indicator_len = 14
+    spacing = 6
+
+    max_text_w = 0
+    for label, _ in items:
+        (tw, th), _ = cv2.getTextSize(label, font, font_scale, font_thickness)
+        if tw > max_text_w:
+            max_text_w = tw
+
+    box_w = pad_x * 2 + indicator_len + spacing + max_text_w
+    box_h = pad_y * 2 + len(items) * line_h
+
+    h, w = vis.shape[:2]
+    x2 = w - margin_right
+    y2 = h - margin_bottom
+    x1 = x2 - box_w
+    y1 = y2 - box_h
+
+    if x1 < 0 or y1 < 0:
+        return
+
+    overlay = vis.copy()
+    cv2.rectangle(overlay, (x1, y1), (x2, y2), (15, 23, 42), -1)
+    cv2.rectangle(overlay, (x1, y1), (x2, y2), (70, 80, 95), 1, cv2.LINE_AA)
+    cv2.addWeighted(overlay, 0.75, vis, 0.25, 0, vis)
+
+    for idx, (label, col) in enumerate(items):
+        item_y = y1 + pad_y + idx * line_h + line_h // 2
+        line_start_x = x1 + pad_x
+        line_end_x = line_start_x + indicator_len
+        cv2.line(vis, (line_start_x, item_y), (line_end_x, item_y), col, 2, cv2.LINE_AA)
+        cv2.circle(vis, ((line_start_x + line_end_x) // 2, item_y), 3, col, -1, cv2.LINE_AA)
+        text_x = line_end_x + spacing
+        text_y = item_y + 4
+        cv2.putText(vis, label, (text_x, text_y), font, font_scale, (240, 240, 240), font_thickness, cv2.LINE_AA)
 
 
 # ---------------------------------------------------------------------------
@@ -447,7 +500,7 @@ def render_video_variant(
     show_blobs: bool,           # If True, draws 2D candidate (Cyan) and Top-4 (Red) blob rings & centroids
     show_pnp: bool,             # If True, draws Raw PnP 3D pose axes & cyan trail
     show_ekf: bool,             # If True, draws EKF smoothed 3D pose axes & aqua trail
-    show_gt: bool,              # If True, draws VR Ground Truth 3D pose axes & magenta trail
+    show_gt: bool,              # If True, draws VR Ground Truth 3D pose axes & bright green trail
     show_trails: bool,
     trail_length: int,
     trail_thickness: int,
@@ -497,10 +550,20 @@ def render_video_variant(
             cap.grab()
 
     pnp_trail = []
+    model_trail = []
     ekf_trail = []
     gt_trail = []
     is_dark = (stream_type == 'dark')
     t0 = time.time()
+
+    legend_items = []
+    if show_trails:
+        if show_pnp:
+            legend_items.append(("PnP (Raw)", (255, 220, 50)))
+        if show_ekf:
+            legend_items.append(("EKF (13-State)", (220, 255, 0)))
+        if show_gt:
+            legend_items.append(("Ground Truth", (0, 255, 0)))
 
     for idx, f_idx in enumerate(range(start_frame, end_frame)):
         ret, frame = cap.read()
@@ -568,11 +631,11 @@ def render_video_variant(
                 p_gt_cam = R_X @ (R_gt_vr @ t_Y + p_gt_vr) + t_X  # meters
                 tvec_gt_cam_mm = (p_gt_cam * 1000.0).reshape(3, 1)
 
-                # 3D Coordinate Axes at bar origin (Magenta, Yellow, Orange)
+                # 3D Coordinate Axes at bar origin (Bright Green, Yellow, Orange)
                 draw_3d_axes_clean(
                     vis, R_gt_cam, tvec_gt_cam_mm, K, dist,
                     axis_length_mm=75.0, thickness=2,
-                    colors=((255, 50, 220), (50, 255, 255), (0, 165, 255))
+                    colors=((0, 255, 0), (50, 255, 255), (0, 165, 255))
                 )
 
                 # Trail point
@@ -666,16 +729,19 @@ def render_video_variant(
                         if tr_i == len(ekf_trail) - 1:
                             cv2.circle(vis, e2, 4, (220, 255, 0), -1, cv2.LINE_AA)
 
-            # GT Trail (Bold Magenta fading)
+            # GT Trail (Bright Green fading)
             for tr_i in range(1, len(gt_trail)):
                 alpha = 0.30 + 0.70 * (tr_i / float(trail_length))
                 if gt_trail[tr_i - 1] is not None and gt_trail[tr_i] is not None:
                     g1, g2 = gt_trail[tr_i - 1], gt_trail[tr_i]
                     if 0 <= g1[0] < width and 0 <= g1[1] < height and 0 <= g2[0] < width and 0 <= g2[1] < height:
-                        col_gt = (int(220 * alpha), int(50 * alpha), int(255 * alpha))
+                        col_gt = (int(0 * alpha), int(255 * alpha), int(0 * alpha))
                         cv2.line(vis, g1, g2, col_gt, trail_thickness, cv2.LINE_AA)
                         if tr_i == len(gt_trail) - 1:
-                            cv2.circle(vis, g2, 4, (220, 50, 255), -1, cv2.LINE_AA)
+                            cv2.circle(vis, g2, 4, (0, 255, 0), -1, cv2.LINE_AA)
+
+            if legend_items:
+                draw_trail_legend(vis, legend_items)
 
         writer.write(vis)
 
@@ -822,8 +888,8 @@ def generate_metadata_markdown(
 * **RGB Coordinate Axes (PnP / EKF)**: Optical 6-DoF rigid body pose (+X: Red, +Y: Green, +Z: Blue).
 * **Cyan Trail**: 3D motion history trail of Raw PnP tracked bar origin.
 * **Aqua / Emerald Trail**: 3D motion history trail of EKF smoothed bar origin.
-* **Magenta / Yellow / Orange Axes**: Transformed VR Ground Truth (Right Controller) 6-DoF pose (+X: Magenta, +Y: Yellow, +Z: Orange).
-* **Magenta Trail**: 3D motion history trail of VR Ground Truth bar origin.
+* **Bright Green / Yellow / Orange Axes**: Transformed VR Ground Truth (Right Controller) 6-DoF pose (+X: Bright Green, +Y: Yellow, +Z: Orange).
+* **Bright Green Trail**: 3D motion history trail of VR Ground Truth bar origin.
 """
 
     readme_path = out_dir / "README.md"
@@ -867,7 +933,7 @@ def main():
     if args.out_dir:
         out_dir = Path(args.out_dir)
     else:
-        out_dir = ROOT / "data" / "renders" / f"renders_{timestamp_str}"
+        out_dir = ROOT / "data" / "renders" / "geometry-based" / f"renders_{timestamp_str}"
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"[Init] Output directory initialized at: {out_dir.resolve()}")
 

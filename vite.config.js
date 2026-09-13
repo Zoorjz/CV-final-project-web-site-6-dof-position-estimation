@@ -12,21 +12,33 @@ import fs from 'fs';
 function resolveLatestRendersDirectory() {
   const dataDir = path.resolve(__dirname, 'data');
   const rendersDir = path.join(dataDir, 'renders');
+  const geomDir = path.join(rendersDir, 'geometry-based');
+  const dataDrivenDir = path.join(rendersDir, 'data-driven');
 
   let candidates = [];
 
-  // Check subdirectories in data/renders/
+  // Check subdirectories in data/renders/geometry-based/
+  if (fs.existsSync(geomDir) && fs.statSync(geomDir).isDirectory()) {
+    const geomEntries = fs.readdirSync(geomDir)
+      .filter(name => name.startsWith('renders_') && fs.statSync(path.join(geomDir, name)).isDirectory())
+      .map(name => ({ name, fullPath: path.join(geomDir, name) }));
+    candidates.push(...geomEntries);
+  }
+
+  // Check subdirectories in data/renders/data-driven/
+  if (fs.existsSync(dataDrivenDir) && fs.statSync(dataDrivenDir).isDirectory()) {
+    const ddEntries = fs.readdirSync(dataDrivenDir)
+      .filter(name => name.startsWith('renders_') && fs.statSync(path.join(dataDrivenDir, name)).isDirectory())
+      .map(name => ({ name, fullPath: path.join(dataDrivenDir, name) }));
+    candidates.push(...ddEntries);
+  }
+
+  // Check subdirectories in data/renders/ (legacy)
   if (fs.existsSync(rendersDir) && fs.statSync(rendersDir).isDirectory()) {
     const subEntries = fs.readdirSync(rendersDir)
       .filter(name => name.startsWith('renders_') && fs.statSync(path.join(rendersDir, name)).isDirectory())
       .map(name => ({ name, fullPath: path.join(rendersDir, name) }));
     candidates.push(...subEntries);
-
-    // If data/renders itself has .mp4 files directly and no subdirs
-    const directMp4s = fs.readdirSync(rendersDir).filter(f => f.endsWith('.mp4'));
-    if (directMp4s.length > 0 && subEntries.length === 0) {
-      candidates.push({ name: 'renders_direct', fullPath: rendersDir });
-    }
   }
 
   // Check top-level data/renders_YYYYMMDD_HHMMSS
@@ -42,6 +54,43 @@ function resolveLatestRendersDirectory() {
   // Sort descending to get the newest timestamp
   candidates.sort((a, b) => b.name.localeCompare(a.name));
   return candidates[0].fullPath;
+}
+
+function findRenderFileInCandidates(fileName) {
+  const dataDir = path.resolve(__dirname, 'data');
+  const rendersDir = path.join(dataDir, 'renders');
+  const geomDir = path.join(rendersDir, 'geometry-based');
+  const dataDrivenDir = path.join(rendersDir, 'data-driven');
+
+  const searchDirs = [];
+  if (fs.existsSync(geomDir)) {
+    const gSubs = fs.readdirSync(geomDir)
+      .filter(n => n.startsWith('renders_') && fs.statSync(path.join(geomDir, n)).isDirectory())
+      .map(n => path.join(geomDir, n));
+    searchDirs.push(...gSubs);
+  }
+  if (fs.existsSync(dataDrivenDir)) {
+    const ddSubs = fs.readdirSync(dataDrivenDir)
+      .filter(n => n.startsWith('renders_') && fs.statSync(path.join(dataDrivenDir, n)).isDirectory())
+      .map(n => path.join(dataDrivenDir, n));
+    searchDirs.push(...ddSubs);
+  }
+  if (fs.existsSync(rendersDir)) {
+    const subs = fs.readdirSync(rendersDir)
+      .filter(n => n.startsWith('renders_') && fs.statSync(path.join(rendersDir, n)).isDirectory())
+      .map(n => path.join(rendersDir, n));
+    searchDirs.push(...subs);
+  }
+
+  searchDirs.sort((a, b) => path.basename(b).localeCompare(path.basename(a)));
+
+  for (const dir of searchDirs) {
+    const p = path.join(dir, fileName);
+    if (fs.existsSync(p) && fs.statSync(p).isFile()) {
+      return p;
+    }
+  }
+  return null;
 }
 
 /**
@@ -114,11 +163,16 @@ function serveDataDirectory() {
           // If path is /data/renders/... resolve dynamically to the latest timestamped folder
           if (decodedUrl.startsWith('/data/renders/')) {
             const fileName = path.basename(decodedUrl);
-            const latestDir = resolveLatestRendersDirectory();
-            if (latestDir) {
-              const candidatePath = path.join(latestDir, fileName);
-              if (fs.existsSync(candidatePath)) {
-                filePath = candidatePath;
+            const foundPath = findRenderFileInCandidates(fileName);
+            if (foundPath) {
+              filePath = foundPath;
+            } else {
+              const latestDir = resolveLatestRendersDirectory();
+              if (latestDir) {
+                const candidatePath = path.join(latestDir, fileName);
+                if (fs.existsSync(candidatePath)) {
+                  filePath = candidatePath;
+                }
               }
             }
           }
@@ -135,6 +189,7 @@ function serveDataDirectory() {
               '.png': 'image/png',
               '.jpg': 'image/jpeg',
               '.jpeg': 'image/jpeg',
+              '.gif': 'image/gif',
               '.json': 'application/json',
               '.csv': 'text/csv',
               '.md': 'text/markdown'
@@ -143,8 +198,21 @@ function serveDataDirectory() {
 
             if (range) {
               const parts = range.replace(/bytes=/, '').split('-');
-              const start = parseInt(parts[0], 10);
-              const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+              let start = parseInt(parts[0], 10);
+              let end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+              if (isNaN(start) || start < 0) start = 0;
+              if (isNaN(end) || end >= fileSize) end = fileSize - 1;
+
+              if (start >= fileSize || start > end) {
+                res.writeHead(416, {
+                  'Content-Range': `bytes */${fileSize}`,
+                  'Content-Type': contentType,
+                });
+                res.end();
+                return;
+              }
+
               const chunksize = (end - start) + 1;
               const file = fs.createReadStream(filePath, { start, end });
               const head = {

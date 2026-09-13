@@ -1,20 +1,13 @@
 /**
  * Report Content Configuration
  * 
- * Data-driven presentation blocks vertically arranged on the webpage.
- * Easily add, remove, or modify blocks to update the report.
- * 
- * Supported layout types:
- * - 'hero'         : Title banner with project metadata and badges
- * - 'image-right'  : Text content on the left, image/figure on the right
- * - 'image-left'   : Image/figure on the left, text content on the right
- * - 'image-bottom' : Full-width visual with detailed caption & technical notes below
- * - 'stats-grid'   : Grid of key performance and calibration metrics
+ * Data-driven presentation blocks configured from project presentation materials.
+ * Main presentation structure containing 6 distinct topic blocks with large typography.
  */
 
 export const reportMetadata = {
-  title: "6-DoF Rigid Body Tracking & Benchmark",
-  subtitle: "Comparative Analysis: Classical PnP/EKF vs. Data-Driven Deep Learning Pipelines",
+  title: "Real-Time 6D Pose Estimation of a Rigid Training Bar",
+  subtitle: "Using Geometry-Based and Data-Driven Approaches",
   authors: ["Computer Vision Final Project", "UTN Studies"],
   date: "September 2026",
   version: "1.0",
@@ -25,109 +18,190 @@ export const reportBlocks = [
   {
     id: "hero",
     layout: "hero",
-    badge: "Final Research Report & Interactive Demo",
-    title: "Optical 6-DoF Rigid Body Tracking",
-    subtitle: "High-precision optical pose estimation benchmarked against millimeter-accurate Meta Quest VR Ground Truth across classical vision and deep learning pipelines.",
+    badge: "Computer Vision Final Project Presentation",
+    title: "Real-Time 6D Pose Estimation of a Rigid Training Bar",
+    subtitle: "Using Geometry-Based and Data-Driven Approaches",
     stats: [
-      { label: "Median Position Error", value: "18.84 mm", subtext: "Rigid body translation accuracy" },
-      { label: "Median Angular Error", value: "3.55°", subtext: "3D Euler orientation accuracy" },
-      { label: "Shutter Speeds", value: "1ms / 10ms", subtext: "Dark IR vs. Ambient Visual" },
-      { label: "Temporal Alignment", value: "Δt = +18.97 s", subtext: "Affine cross-correlation sync" }
+      { label: "Hardware Target", value: "Raspberry Pi 4B", subtext: "Real-time edge compute" },
+      { label: "Camera Stream", value: "640×400 @ 309 fps", subtext: "OV9281 Global Shutter" },
+      { label: "Ground Truth", value: "Meta Quest Pro", subtext: "90 Hz Inside-Out Tracking" },
+      { label: "Dataset Size", value: "42,000+ pts", subtext: "Synchronized 6-DoF frames" }
     ]
   },
   {
-    id: "motivation-hardware",
+    id: "embodied-systems",
     layout: "image-right",
-    tag: "Hardware & Acquisition",
-    title: "Dual-Exposure Capture & Marker Array",
-    content: [
-      "Precise 6-DoF tracking in uncontrolled indoor environments faces extreme challenges from ambient illumination, motion blur, and visual occlusions. To solve this, our acquisition system employs an interleaved dual-exposure Raspberry Pi HQ camera rig.",
-      "The tracking target consists of a custom rigid bar equipped with calibrated Infrared (IR) LED optical markers. By capturing alternating high-speed short-exposure frames (**1,000 µs / Dark IR**) and regular exposure frames (**10,000 µs / Bright Visual**), we achieve crisp marker isolation without sacrificing scene context."
-    ],
-    highlights: [
-      "1,000 µs IR dark stream isolates active markers at near-zero background noise.",
-      "10,000 µs ambient stream preserves visual scene features for data-driven modeling.",
-      "Rigid body geometry defined with sub-millimeter calibrated 3D marker coordinates."
+    tag: "Embodied Systems",
+    title: "Perception for Physical Interaction",
+    subsections: [
+      {
+        title: "Robotic Strength Training Device",
+        items: [
+          "From 5 to 50 kg dynamic motorized load",
+          "Instant closed-loop torque control",
+          "Limited perceptual information about the user"
+        ]
+      },
+      {
+        title: "Missing State Information:",
+        items: [
+          "User’s biomechanical body pose",
+          "Real-time 6-DoF spatial position of the bar",
+          "Environmental context & interaction boundary"
+        ]
+      }
     ],
     image: {
-      src: "/assets/sample_1000us.png",
-      alt: "Short shutter 1000 µs IR capture showing isolated LED markers",
-      caption: "Figure 1: Isolated IR optical marker centroids under 1,000 µs short-shutter exposure."
+      src: "/images/image5.png",
+      alt: "Robotic Strength Training Device",
+      caption: "Robotic strength training device with motorized resistance",
+      isEnlargedCrop: true
     }
   },
   {
-    id: "ground-truth-calibration",
+    id: "computer-vision",
     layout: "image-left",
-    tag: "Sensor Calibration",
-    title: "VR Ground Truth & Coordinate Alignment",
-    content: [
-      "To rigorously evaluate pose estimation accuracy, a Meta Quest 6-DoF VR controller was mechanically coupled to the optical marker bar. The VR tracking system provides high-frequency ground-truth trajectories with millimeter accuracy.",
-      "A dual-stage optimization pipeline resolves the coordinate frame transformations: the camera-to-world transform ($T_{\\text{cam} \\to \\text{vr}}$) and controller-to-bar offset ($T_{\\text{ctrl} \\to \\text{bar}}$), alongside an affine temporal cross-correlation ($t_{\\text{GT}} = t_{\\text{video}} + 18.9700\\text{ s}$)."
-    ],
-    highlights: [
-      "Spatial Extrinsics: $T_{\\text{cam}\\to\\text{vr}}$ estimated via non-linear least squares.",
-      "Temporal offset: $\\Delta t = +18.9700\\text{ s}$ verified with motion velocity peaks.",
-      "Controller offset: $T_{\\text{ctrl}\\to\\text{bar}} = [23.24, -7.10, -1.51]\\text{ mm}$."
+    tag: "Computer Vision",
+    title: "6D Pose Estimation of a Rigid Training Bar",
+    subsections: [
+      {
+        title: "Position estimation of a training bar enables:",
+        items: [
+          "Real-time dynamic safety & load shedding",
+          "Automated exercise classification & repetition counting",
+          "Immersive interactive workout gamification in VR/AR"
+        ]
+      },
+      {
+        title: "System Constraints",
+        items: [
+          "Edge compute budget (Raspberry Pi 4B)",
+          "Low-latency real-time tracking pipeline"
+        ]
+      }
     ],
     image: {
-      src: "/assets/sample_10000us.png",
-      alt: "Regular exposure 10000 µs visual frame showing ambient tracking environment",
-      caption: "Figure 2: 10,000 µs ambient visual frame displaying controller rig & tracking bar."
+      src: "/images/image7.gif",
+      alt: "Simulation of workout in VR, Gaming footage is Generated by AI",
+      caption: "Simulation of workout in VR, Gaming footage is Generated by AI"
     }
   },
   {
-    id: "spatial-temporal-results",
-    layout: "image-bottom",
-    tag: "Benchmark & Trajectory",
-    title: "Spatial-Temporal Alignment & Error Evaluation",
-    content: [
-      "The estimated optical trajectory is quantitatively compared against the transformed VR ground truth over a continuous 200-frame motion sequence. Trajectories exhibit consistent spatial fidelity across complex 3D helical sweeps and sharp rotational maneuvers.",
-      "The alignment yields a **median 3D translation error of 18.84 mm** and a **median angular orientation error of 3.55°**, establishing a robust baseline for evaluating both classical geometry-based and learned neural estimators."
-    ],
-    image: {
-      src: "/assets/alignment_plots.png",
-      alt: "Alignment curves and 3D trajectory comparison between PnP and VR Ground Truth",
-      caption: "Figure 3: Synchronized 3D trajectory curves, Euler angles, and residual error distributions over time."
-    }
-  },
-  {
-    id: "classical-pipeline",
+    id: "possible-implementations",
     layout: "image-right",
-    tag: "Classical Vision",
-    title: "3D Geometric Pipeline: PnP & EKF",
-    content: [
-      "The classical 3D pipeline leverages rigorous projective geometry. High-speed dark frames are processed through adaptive thresholding and 2D sub-pixel blob centroiding.",
-      "The resulting 2D-3D point correspondences are solved using the Perspective-n-Point (PnP) algorithm with RANSAC outlier rejection, followed by an Extended Kalman Filter (EKF) constant-velocity motion model that suppresses high-frequency jitter."
-    ],
-    highlights: [
-      "Sub-pixel ellipse fitting achieves $<0.2\\text{ px}$ centroid precision.",
-      "Robust PnP solver estimates 6-DoF transformation matrix $[R | t]$.",
-      "EKF smoothing guarantees temporal continuity and velocity estimation."
+    tag: "Possible Implementations",
+    title: "Geometry-Based and Data-Driven Approaches",
+    subsections: [
+      {
+        title: "Geometry-Based Tracking (PnP / EKF)",
+        items: [
+          "Deterministic closed-form Perspective-n-Point pose solvers",
+          "Minimal computational overhead (ideal for edge SBC deployment)",
+          "Requires calibrated optical retroreflective markers & known geometry"
+        ]
+      },
+      {
+        title: "Data-Driven Approaches (CNN / Deep Learning)",
+        items: [
+          "Markerless direct 6-DoF pose regression from intensity frames",
+          "High compute & memory footprint during neural inference",
+          "Requires large-scale annotated multi-view training datasets"
+        ]
+      }
     ],
     image: {
-      src: "/assets/sample_rendered_frame.png",
-      alt: "Overlaid 3D Coordinate axes and trajectory trail on optical frame",
-      caption: "Figure 4: Rendered optical 3D pose (RGB axes) and trajectory trail aligned with VR Ground Truth."
+      src: "/images/image4.png",
+      alt: "Infrared retro-reflective markers surgical navigation comparison",
+      caption: "Source: An Accurate Recognition of Infrared Retro-Reflective Markers in Surgical Navigation Systems-Level Quality Improvement"
     }
   },
   {
-    id: "data-driven-pipeline",
-    layout: "image-left",
-    tag: "Data-Driven Approaches",
-    title: "Deep Learning & Regressor Pipelines",
-    content: [
-      "In parallel with classical geometric methods, two data-driven paradigms are investigated: an end-to-end **Convolutional Neural Network (CNN)** predicting 6-DoF pose directly from intensity images, and a hybrid **Machine Learning (ML)** regressor mapping extracted 2D blob features to 3D poses.",
-      "These models offer superior resilience under severe optical marker occlusions and ambient reflections where classical 2D-3D correspondence matching may fail."
+    id: "hardware-camera",
+    layout: "dual-image-right",
+    tag: "Hardware",
+    title: "Camera Module & Illumination",
+    subsections: [
+      {
+        title: "Global Shutter Camera",
+        items: [
+          "OV9281 Monochrome sensor",
+          "High frame rate: 640×400 @ 309 fps",
+          "Zero motion blur with RAW8 / RAW10 direct readout",
+          "Narrowband Infrared Optical Pass Filter"
+        ]
+      },
+      {
+        title: "Active Infrared 3-LED Array",
+        items: [
+          "850 nm high-intensity optical emission",
+          "Integrated 40V to 12V buck step-down converter",
+          "Adjustable pulse intensity & illumination brightness"
+        ]
+      }
     ],
-    highlights: [
-      "CNN Pipeline: Direct end-to-end regression from raw frame to $[q, t]$.",
-      "ML Pipeline: Geometric feature embedding + Random Forest / MLP regressor.",
-      "Comparative benchmark highlights tradeoffs between computational cost and accuracy."
+    images: [
+      {
+        src: "/images/image1.png",
+        alt: "OV9281 Camera Module",
+        caption: "OV9281 Monochrome Global Shutter Camera"
+      },
+      {
+        src: "/images/image3.png",
+        alt: "Infrared 3 LED Array Board",
+        caption: "850 nm Infrared 3-LED Array Board"
+      }
+    ]
+  },
+  {
+    id: "hardware-rigidbody",
+    layout: "image-left",
+    tag: "Hardware",
+    title: "Rigid Body for Position Estimation",
+    subsections: [
+      {
+        title: "The Training Bar Target",
+        items: [
+          "4 high-contrast retroreflective optical markers",
+          "Rigid calibrated 3D geometric marker constellation",
+          "Custom 3D-printed mechanical housing for VR controller"
+        ]
+      },
+      {
+        title: "Meta Quest Touch Pro (Ground Truth Reference)",
+        items: [
+          "Independent 6-DoF inside-out computer vision tracking",
+          "Translational worst-case error: 3.2 ± 2.4 mm MAE",
+          "Rotational worst-case error: 2.1 ± 1.0° MAE",
+          "90 Hz high-frequency trajectory streaming"
+        ]
+      }
     ],
     image: {
-      src: "/assets/sample_rendered_frame.png",
-      alt: "Visual representation of data-driven tracking pipeline",
-      caption: "Figure 5: 6-DoF pose estimation under data-driven neural and machine learning estimators."
+      src: "/images/image6.png",
+      alt: "Rigid training bar with 4 markers and Meta Quest Touch Pro mount",
+      caption: "Rigid training bar prototype with 4 optical markers and Meta Quest Touch Pro housing"
+    }
+  },
+  {
+    id: "data-acquisition",
+    layout: "image-right",
+    tag: "Data Acquisition",
+    title: "Custom Dataset Collection",
+    subsections: [
+      {
+        title: "Synchronized Multi-Modal Stream Capture",
+        items: [
+          "Synchronous camera video & 6-DoF controller ground-truth logs",
+          "10-minute continuous recording duration",
+          "72 Datapoints per second capture rate",
+          "42,000+ spatial-temporal sample points across 3D poses & rotations"
+        ]
+      }
+    ],
+    image: {
+      src: "/images/image2.gif",
+      alt: "Dataset collection and 3D trajectory tracking preview",
+      caption: "Synchronized dual-stream video and 6-DoF controller ground-truth recording"
     }
   }
 ];

@@ -19,7 +19,10 @@ export class VideoPlayer {
     this.config = options.config;
     this.isDataDriven = options.isDataDriven || false;
     this.currentMode = options.defaultMode || "CNN";
-    this.currentStageIndex = 0;
+    const initialStages = this.getCurrentStages();
+    this.currentStageIndex = options.defaultStageIndex !== undefined 
+      ? options.defaultStageIndex 
+      : Math.max(0, initialStages.length - 2);
     this.showGT = options.showGT || false;
     this.onVideoChange = options.onVideoChange || (() => {});
     this.onUserSeek = options.onUserSeek || (() => {});
@@ -103,7 +106,7 @@ export class VideoPlayer {
           ></video>
           <div class="video-meta-overlay">
             <span class="overlay-shutter">${stage.shutter}</span>
-            ${stage.isPlaceholder ? `<span class="overlay-placeholder">Demo Fallback</span>` : `<span class="overlay-live">Active Render</span>`}
+            ${stage.isPlaceholder ? `<span class="overlay-placeholder">Demo Fallback</span>` : ""}
           </div>
         </div>
 
@@ -147,7 +150,6 @@ export class VideoPlayer {
   renderTicks(stages, activeIndex) {
     return stages.map((stg, i) => `
       <div class="tick-mark ${i === activeIndex ? "active" : ""} ${i < activeIndex ? "passed" : ""}" data-index="${i}" title="${stg.name}">
-        <div class="tick-dot"></div>
         <span class="tick-label">${stg.name}</span>
       </div>
     `).join("");
@@ -225,7 +227,8 @@ export class VideoPlayer {
   setMode(mode) {
     if (this.currentMode === mode) return;
     this.currentMode = mode;
-    this.currentStageIndex = 0;
+    const stages = this.getCurrentStages();
+    this.currentStageIndex = Math.max(0, stages.length - 2);
     this.render();
     this.onVideoChange();
   }
@@ -302,7 +305,7 @@ export class VideoPlayer {
     if (metaContainer) {
       metaContainer.innerHTML = `
         <span class="overlay-shutter">${stage.shutter}</span>
-        ${stage.isPlaceholder ? `<span class="overlay-placeholder">Demo Fallback</span>` : `<span class="overlay-live">Active Render</span>`}
+        ${stage.isPlaceholder ? `<span class="overlay-placeholder">Demo Fallback</span>` : ""}
       `;
     }
   }

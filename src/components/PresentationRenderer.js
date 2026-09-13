@@ -2,7 +2,7 @@
  * Presentation Section Renderer
  * 
  * Generates clean, accessible, academic presentation cards dynamically
- * from the reportContent.js data configuration.
+ * from the reportContent.js data configuration with large-font slide layouts.
  */
 
 export class PresentationRenderer {
@@ -17,7 +17,7 @@ export class PresentationRenderer {
 
     this.data.forEach((block, index) => {
       const blockEl = document.createElement("section");
-      blockEl.className = `presentation-block block-${block.layout}`;
+      blockEl.className = `presentation-block block-${block.layout} ${block.id ? `block-${block.id}` : ""}`;
       blockEl.id = `block-${block.id || index}`;
       blockEl.setAttribute("data-layout", block.layout);
 
@@ -30,6 +30,9 @@ export class PresentationRenderer {
           break;
         case "image-left":
           blockEl.innerHTML = this.renderImageLeftBlock(block);
+          break;
+        case "dual-image-right":
+          blockEl.innerHTML = this.renderDualImageBlock(block);
           break;
         case "image-bottom":
           blockEl.innerHTML = this.renderImageBottomBlock(block);
@@ -66,15 +69,56 @@ export class PresentationRenderer {
     `;
   }
 
+  renderHeaderTag(block) {
+    if (!block.tag) return "";
+    return `
+      <div class="block-tag-group">
+        <span class="block-tag">${block.tag}</span>
+      </div>
+    `;
+  }
+
+  renderSubsections(subsections) {
+    if (!subsections || !subsections.length) return "";
+    return `
+      <div class="block-subsections">
+        ${subsections.map(sub => `
+          <div class="subsection-group">
+            ${sub.title ? `<h3 class="subsection-title">${sub.title}</h3>` : ""}
+            ${sub.items && sub.items.length ? `
+              <ul class="subsection-list">
+                ${sub.items.map(item => `
+                  <li class="subsection-item">
+                    <span class="bullet-point"></span>
+                    <span class="bullet-text">${item}</span>
+                  </li>
+                `).join("")}
+              </ul>
+            ` : ""}
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  renderBodyContent(block) {
+    let bodyHtml = "";
+    if (block.content && block.content.length) {
+      bodyHtml += `<div class="block-body">${block.content.map(p => `<p>${p}</p>`).join("")}</div>`;
+    }
+    if (block.subsections) {
+      bodyHtml += this.renderSubsections(block.subsections);
+    }
+    return bodyHtml;
+  }
+
   renderImageRightBlock(block) {
     return `
       <div class="block-inner split-grid">
         <div class="block-text-column">
-          ${block.tag ? `<span class="block-tag">${block.tag}</span>` : ""}
+          ${this.renderHeaderTag(block)}
           <h2 class="block-title">${block.title}</h2>
-          <div class="block-body">
-            ${block.content.map(p => `<p>${p}</p>`).join("")}
-          </div>
+          ${this.renderBodyContent(block)}
           ${this.renderHighlights(block.highlights)}
         </div>
         <div class="block-media-column">
@@ -91,12 +135,29 @@ export class PresentationRenderer {
           ${this.renderMedia(block.image)}
         </div>
         <div class="block-text-column">
-          ${block.tag ? `<span class="block-tag">${block.tag}</span>` : ""}
+          ${this.renderHeaderTag(block)}
           <h2 class="block-title">${block.title}</h2>
-          <div class="block-body">
-            ${block.content.map(p => `<p>${p}</p>`).join("")}
-          </div>
+          ${this.renderBodyContent(block)}
           ${this.renderHighlights(block.highlights)}
+        </div>
+      </div>
+    `;
+  }
+
+  renderDualImageBlock(block) {
+    const images = block.images || (block.image ? [block.image] : []);
+    return `
+      <div class="block-inner split-grid dual-image-layout">
+        <div class="block-text-column">
+          ${this.renderHeaderTag(block)}
+          <h2 class="block-title">${block.title}</h2>
+          ${this.renderBodyContent(block)}
+          ${this.renderHighlights(block.highlights)}
+        </div>
+        <div class="block-media-column dual-media-column">
+          <div class="dual-images-grid">
+            ${images.map(img => this.renderMedia(img, false, "dual-img-card")).join("")}
+          </div>
         </div>
       </div>
     `;
@@ -106,11 +167,9 @@ export class PresentationRenderer {
     return `
       <div class="block-inner full-width-card">
         <div class="card-header">
-          ${block.tag ? `<span class="block-tag">${block.tag}</span>` : ""}
+          ${this.renderHeaderTag(block)}
           <h2 class="block-title">${block.title}</h2>
-          <div class="block-body">
-            ${block.content.map(p => `<p>${p}</p>`).join("")}
-          </div>
+          ${this.renderBodyContent(block)}
         </div>
         <div class="card-media-large">
           ${this.renderMedia(block.image, true)}
@@ -123,11 +182,9 @@ export class PresentationRenderer {
   renderStandardBlock(block) {
     return `
       <div class="block-inner">
-        ${block.tag ? `<span class="block-tag">${block.tag}</span>` : ""}
+        ${this.renderHeaderTag(block)}
         <h2 class="block-title">${block.title}</h2>
-        <div class="block-body">
-          ${block.content ? block.content.map(p => `<p>${p}</p>`).join("") : ""}
-        </div>
+        ${this.renderBodyContent(block)}
       </div>
     `;
   }
@@ -148,10 +205,11 @@ export class PresentationRenderer {
     `;
   }
 
-  renderMedia(image, isLarge = false) {
+  renderMedia(image, isLarge = false, extraClass = "") {
     if (!image) return "";
+    const cropClass = image.isEnlargedCrop ? "figure-crop-zoom" : "";
     return `
-      <figure class="block-figure ${isLarge ? "figure-large" : ""}">
+      <figure class="block-figure ${isLarge ? "figure-large" : ""} ${extraClass} ${cropClass}">
         <div class="figure-img-wrapper">
           <img src="${image.src}" alt="${image.alt || ""}" loading="lazy" class="figure-image" />
         </div>

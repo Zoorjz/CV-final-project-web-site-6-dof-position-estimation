@@ -8,16 +8,16 @@
 export const VIDEO_DATASET_BASE = "/data/renders";
 
 export const PIPELINE_CONFIG = {
-  // Left side: Classical 3D Pipeline (PnP & EKF)
+  // Left side: Classical Geometry-based Pipeline (PnP & EKF)
   pnp3d: {
     id: "pnp3d",
-    title: "3D Pipeline",
+    title: "Geometry based",
     subtitle: "PnP",
     badge: "Classical Vision",
     stages: [
       {
         id: "regular_video",
-        name: "Regular Video",
+        name: "Long Exposure",
         shutter: "10,000 µs",
         description: "10,000 µs ambient visual stream showing the full room environment and tracking rig.",
         files: {
@@ -28,7 +28,7 @@ export const PIPELINE_CONFIG = {
       },
       {
         id: "short_shutter_video",
-        name: "Short Shutter Video",
+        name: "Short Exposure",
         shutter: "1,000 µs",
         description: "1,000 µs high-speed dark IR frame eliminating ambient illumination and motion blur.",
         files: {
@@ -87,7 +87,7 @@ export const PIPELINE_CONFIG = {
   // Right side: Data-Driven Pipeline with dropdown variants
   dataDriven: {
     id: "dataDriven",
-    title: "Data Driven Pipeline",
+    title: "Data driven",
     defaultMode: "CNN",
     modes: {
       CNN: {
@@ -98,23 +98,23 @@ export const PIPELINE_CONFIG = {
         stages: [
           {
             id: "regular_video",
-            name: "Regular Video",
+            name: "Long Exposure",
             shutter: "10,000 µs",
-            description: "Ambient RGB visual input provided to the neural convolutional feature backbone.",
+            description: "Ambient RGB visual input capturing full room context and tracking environment.",
             files: {
-              raw: "11_bright_raw.mp4",
-              gt: "12_bright_gt.mp4"
+              raw: "01_bright_raw.mp4",
+              gt: "02_bright_gt.mp4"
             },
             isPlaceholder: false
           },
           {
             id: "dark_video",
-            name: "Dark Video",
+            name: "Short Exposure",
             shutter: "1,000 µs",
-            description: "1,000 µs high-contrast input tensor passed to convolutional layers for direct marker localization.",
+            description: "1,000 µs high-contrast input tensor passed directly to convolutional layers for marker localization.",
             files: {
-              raw: "01_dark_raw.mp4",
-              gt: "02_dark_gt.mp4"
+              raw: "03_dark_raw.mp4",
+              gt: "04_dark_gt.mp4"
             },
             isPlaceholder: false
           },
@@ -122,13 +122,23 @@ export const PIPELINE_CONFIG = {
             id: "cnn_output",
             name: "CNN Output",
             shutter: "1,000 µs",
-            description: "Direct 6-DoF pose prediction [q, t] regressed by deep convolutional neural network.",
+            description: "Direct 6-DoF pose prediction [q, t] regressed by deep neural network (Orchid axes & violet trail).",
             files: {
-              raw: "09_dark_ekf.mp4",
-              gt: "10_dark_ekf_gt.mp4"
+              raw: "05_cnn_raw.mp4",
+              gt: "06_cnn_gt.mp4"
             },
-            isPlaceholder: true,
-            placeholderNote: "CNN checkpoint inference render in progress"
+            isPlaceholder: false
+          },
+          {
+            id: "cnn_kf",
+            name: "CNN + Kalman Filter",
+            shutter: "1,000 µs",
+            description: "Causal 6-DoF Kalman-filtered trajectory (Deep Violet axes & Indigo trail) eliminating high-frequency jitter.",
+            files: {
+              raw: "07_cnn_kf_raw.mp4",
+              gt: "08_cnn_kf_gt.mp4"
+            },
+            isPlaceholder: false
           }
         ]
       },
@@ -140,23 +150,23 @@ export const PIPELINE_CONFIG = {
         stages: [
           {
             id: "regular_video",
-            name: "Regular Video",
+            name: "Long Exposure",
             shutter: "10,000 µs",
             description: "Ambient visual frame capturing scene lighting and background spatial context.",
             files: {
-              raw: "11_bright_raw.mp4",
-              gt: "12_bright_gt.mp4"
+              raw: "01_bright_raw.mp4",
+              gt: "02_bright_gt.mp4"
             },
             isPlaceholder: false
           },
           {
             id: "dark_video",
-            name: "Dark Video",
+            name: "Short Exposure",
             shutter: "1,000 µs",
-            description: "1,000 µs short-shutter frame isolating active IR LED markers.",
+            description: "1,000 µs short-shutter frame isolating active optical IR LED markers.",
             files: {
-              raw: "01_dark_raw.mp4",
-              gt: "02_dark_gt.mp4"
+              raw: "03_dark_raw.mp4",
+              gt: "04_dark_gt.mp4"
             },
             isPlaceholder: false
           },
@@ -164,10 +174,10 @@ export const PIPELINE_CONFIG = {
             id: "filtration",
             name: "Filtration",
             shutter: "1,000 µs",
-            description: "Optical pre-filtration isolating active optical IR LED emissions.",
+            description: "Optical pre-filtration isolating genuine LED emissions with background suppressed.",
             files: {
-              raw: "03_dark_filtration.mp4",
-              gt: "04_dark_filtration_gt.mp4"
+              raw: "05_dark_filtration.mp4",
+              gt: "06_dark_filtration_gt.mp4"
             },
             isPlaceholder: false
           },
@@ -177,8 +187,8 @@ export const PIPELINE_CONFIG = {
             shutter: "1,000 µs",
             description: "Extracted 2D centroid coordinates and spatial moments compiled into tabular feature vectors.",
             files: {
-              raw: "05_dark_blobs.mp4",
-              gt: "06_dark_blobs_gt.mp4"
+              raw: "07_dark_blobs.mp4",
+              gt: "08_dark_blobs_gt.mp4"
             },
             isPlaceholder: false
           },
@@ -186,13 +196,23 @@ export const PIPELINE_CONFIG = {
             id: "ml_output",
             name: "ML Algorithm Output",
             shutter: "1,000 µs",
-            description: "Predicted 6-DoF pose output from trained Random Forest / MLP feature regression model.",
+            description: "Predicted 6-DoF pose output from trained Random Forest / MLP regressor (Coral axes & amber trail).",
             files: {
-              raw: "09_dark_ekf.mp4",
-              gt: "10_dark_ekf_gt.mp4"
+              raw: "09_ml_raw.mp4",
+              gt: "10_ml_gt.mp4"
             },
-            isPlaceholder: true,
-            placeholderNote: "ML regressor output render in progress"
+            isPlaceholder: false
+          },
+          {
+            id: "ml_kf",
+            name: "ML + Kalman Filter",
+            shutter: "1,000 µs",
+            description: "Causal 6-DoF Kalman-filtered trajectory (Tangerine axes & canary gold trail) smoothing ML regression.",
+            files: {
+              raw: "11_ml_kf_raw.mp4",
+              gt: "12_ml_kf_gt.mp4"
+            },
+            isPlaceholder: false
           }
         ]
       }

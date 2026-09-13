@@ -4,6 +4,8 @@ data/*
 !data/GT_videos/
 !data/camera_calibration.yaml
 !data/geometry.yaml
+CNN/
+ML/
 
 # Python cache & environments
 __pycache__/

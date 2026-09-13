@@ -312,6 +312,8 @@
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
+  height: 82px;
+  box-sizing: border-box;
   padding-bottom: 14px;
   border-bottom: 1px solid var(--border-color);
 }
@@ -319,7 +321,8 @@
 .player-title-group {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  justify-content: space-between;
+  height: 100%;
 }
 
 .player-title {
@@ -327,19 +330,23 @@
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--text-primary);
+  line-height: 1.2;
 }
 
 .player-subtitle {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 500;
   color: var(--pnp-color);
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
 }
 
 .mode-select-wrapper {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 4px;
+  height: 30px;
 }
 
 .mode-label {
@@ -353,11 +360,13 @@
   color: var(--text-primary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
-  padding: 5px 10px;
+  padding: 4px 10px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   outline: none;
+  height: 30px;
+  box-sizing: border-box;
 }
 
 .player-dropdown:focus {
@@ -510,7 +519,7 @@
 .custom-discrete-slider {
   position: relative;
   width: 100%;
-  padding: 8px 0 28px 0;
+  padding: 10px 0 62px 0;
 }
 
 .stage-range-slider {
@@ -556,9 +565,11 @@
 
 .slider-ticks {
   position: absolute;
-  top: 6px;
+  top: 36px;
   left: 0;
   width: 100%;
+  box-sizing: border-box;
+  padding: 0 10px;
   display: flex;
   justify-content: space-between;
   pointer-events: none;
@@ -568,50 +579,45 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: flex-start;
   cursor: pointer;
   pointer-events: auto;
   user-select: none;
-}
-
-.tick-dot {
-  width: 10px;
-  height: 10px;
-  background-color: #cbd5e1;
-  border: 2px solid white;
-  border-radius: 50%;
-  margin-bottom: 6px;
-  transition: all 0.15s ease;
-  box-shadow: var(--shadow-xs);
-}
-
-.tick-mark:hover .tick-dot {
-  background-color: var(--text-muted);
-  transform: scale(1.2);
-}
-
-.tick-mark.passed .tick-dot {
-  background-color: #93c5fd;
-}
-
-.tick-mark.active .tick-dot {
-  background-color: var(--primary);
-  transform: scale(1.3);
+  width: 0;
+  overflow: visible;
 }
 
 .tick-label {
+  width: 76px;
+  margin-left: -38px;
+  margin-right: -38px;
   font-size: 11px;
+  line-height: 1.25;
   font-weight: 500;
   color: var(--text-muted);
-  white-space: nowrap;
-  max-width: 60px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
   text-align: center;
-  transition: color 0.15s ease;
+  word-wrap: break-word;
+  transition: color 0.15s ease, font-weight 0.15s ease;
+  padding-top: 2px;
+}
+
+.tick-mark:first-child .tick-label {
+  margin-left: -8px;
+  text-align: left;
+}
+
+.tick-mark:last-child .tick-label {
+  margin-left: -68px;
+  text-align: right;
+}
+
+.tick-mark:hover .tick-label {
+  color: var(--text-secondary);
 }
 
 .tick-mark.active .tick-label {
-  color: var(--text-primary);
+  color: var(--primary);
   font-weight: 700;
 }
 
