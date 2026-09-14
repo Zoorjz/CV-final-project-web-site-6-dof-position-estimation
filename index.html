@@ -32,7 +32,7 @@
         <ul class="nav-links">
           <li><a href="#presentation-root" class="nav-link">Presentation</a></li>
           <li><a href="#comparison-section" class="nav-link active-link">Interactive Comparison</a></li>
-          <li><a href="#data-reference" class="nav-link">Dataset Specs</a></li>
+          <li><a href="#results-root" class="nav-link">Results</a></li>
         </ul>
       </nav>
     </div>
@@ -43,7 +43,7 @@
     
     <!-- Part 1: Data-Driven Presentation & Report Section -->
     <div id="presentation-root" class="presentation-container">
-      <!-- Injected dynamically via PresentationRenderer.js from reportContent.js -->
+      <!-- Injected dynamically via PresentationRenderer.js from presentationBlocks -->
     </div>
 
     <!-- Part 2: Interactive Synchronized Comparison Section -->
@@ -68,18 +68,10 @@
       </div>
     </section>
 
-    <!-- Dataset & Specifications Footer Reference -->
-    <section id="data-reference" class="presentation-block" style="margin-top: 48px;">
-      <div class="block-inner">
-        <span class="block-tag">Active Dataset</span>
-        <h3 class="block-title">Dataset Renders & Alignment Specifications</h3>
-        <div class="block-body">
-          <p>
-            Current synchronized renders loaded from <code>data/renders</code>. Sequences contain 200 high-resolution frames (5.56s) evaluated with time synchronization offset &Delta;t = +18.97s against Meta Quest VR 6-DoF ground truth.
-          </p>
-        </div>
-      </div>
-    </section>
+    <!-- Part 3: Performance & Robustness Results Section -->
+    <div id="results-root" class="presentation-container" style="margin-top: 48px;">
+      <!-- Injected dynamically via PresentationRenderer.js from resultsBlocks -->
+    </div>
 
   </main>
 
@@ -88,8 +80,9 @@
     <div class="footer-container">
       <p>&copy; 2026 Computer Vision Final Project — UTN Studies. Built with Vite & Vanilla JS.</p>
       <div class="footer-links">
-        <a href="#presentation-root">Back to Top</a>
-        <a href="#comparison-section">Interactive Player</a>
+        <a href="#presentation-root">Presentation</a>
+        <a href="#comparison-section">Interactive Comparison</a>
+        <a href="#results-root">Results</a>
       </div>
     </div>
   </footer>

@@ -1,14 +1,14 @@
 # Tracking Video Render Dataset (Geometry-Based PnP & EKF)
 
-**Generation Timestamp**: `20260914_165912`  
-**Output Directory**: `C:\OneDrive_1trb\OneDrive\UTN Studies\CV\Final Proj\web-site\data\renders\geometry-based\renders_20260914_165911\simulated`  
+**Generation Timestamp**: `20260914_173601`  
+**Output Directory**: `C:\OneDrive_1trb\OneDrive\UTN Studies\CV\Final Proj\web-site\data\renders\geometry-based\renders_20260914_173600\simulated`  
 
 ---
 
 ## 1. Video Specifications & Processing Pipeline
 
-* **Start Frame**: `2131`
-* **Frame Count**: `200`
+* **Start Frame**: `1250`
+* **Frame Count**: `3000`
 * **Trails Enabled**: `True` (Length: `75` frames)
 * **HUD Overlay**: `Bottom-Left FPS Badge & Bottom-Right Legend`
 
@@ -42,18 +42,18 @@
 
 | Filename | Shutter / Stream | Pipeline Visual Layers Included | Duration | Frame Count | FPS HUD |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `01_dark_raw.mp4` | 1000 µs (Dark IR) | Raw Footage (No Overlay) | 5.56 s | 200 frames | `75.0 FPS` |
-| `02_dark_gt.mp4` | 1000 µs (Dark IR) | VR Ground Truth 3D Pose (Bright Green Axes & Trail) + 3D Trajectory Trails | 5.56 s | 200 frames | `75.0 FPS` |
-| `03_dark_filtration.mp4` | 1000 µs (Dark IR) | Filtered Stream (Isolated LEDs, No Markers) | 5.56 s | 200 frames | `75.0 FPS` |
-| `04_dark_filtration_gt.mp4` | 1000 µs (Dark IR) | Filtered Stream (No Markers) + VR Ground Truth 3D Pose | 5.56 s | 200 frames | `75.0 FPS` |
-| `05_dark_blobs.mp4` | 1000 µs (Dark IR) | Filtered Stream Backdrop + 2D Detected Blobs (Cyan Candidates & Red PnP) | 5.56 s | 200 frames | `75.0 FPS` |
-| `06_dark_blobs_gt.mp4` | 1000 µs (Dark IR) | Filtered Stream Backdrop + 2D Detected Blobs (Cyan Candidates & Red PnP) + VR Ground Truth 3D Pose (Bright Green Axes & Trail) + 3D Trajectory Trails | 5.56 s | 200 frames | `75.0 FPS` |
-| `07_dark_pnp.mp4` | 1000 µs (Dark IR) | Filtered Stream Backdrop + Raw PnP 3D Pose (RGB Axes & Active Red Markers) + 3D Trajectory Trails | 5.56 s | 200 frames | `75.0 FPS` |
-| `08_dark_pnp_gt.mp4` | 1000 µs (Dark IR) | Filtered Stream Backdrop + Raw PnP 3D Pose (RGB Axes & Active Red Markers) + VR Ground Truth 3D Pose (Bright Green Axes & Trail) + 3D Trajectory Trails | 5.56 s | 200 frames | `75.0 FPS` |
-| `09_dark_ekf.mp4` | 1000 µs (Dark IR) | Filtered Stream Backdrop + EKF Smoothed 3D Pose (RGB Axes & Aqua Trail) + 3D Trajectory Trails | 5.56 s | 200 frames | `75.0 FPS` |
-| `10_dark_ekf_gt.mp4` | 1000 µs (Dark IR) | Filtered Stream Backdrop + EKF Smoothed 3D Pose (RGB Axes & Aqua Trail) + VR Ground Truth 3D Pose (Bright Green Axes & Trail) + 3D Trajectory Trails | 5.56 s | 200 frames | `75.0 FPS` |
-| `11_bright_raw.mp4` | 10000 µs (Bright Visual) | Raw Footage (No Overlay) | 5.56 s | 200 frames | `75.0 FPS` |
-| `12_bright_gt.mp4` | 10000 µs (Bright Visual) | VR Ground Truth 3D Pose (Bright Green Axes & Trail) + 3D Trajectory Trails | 5.56 s | 200 frames | `75.0 FPS` |
+| `01_dark_raw.mp4` | 1000 µs (Dark IR) | Raw Footage (No Overlay) | 83.34 s | 3000 frames | `75.0 FPS` |
+| `02_dark_gt.mp4` | 1000 µs (Dark IR) | VR Ground Truth 3D Pose (Bright Green Axes & Trail) + 3D Trajectory Trails | 83.34 s | 3000 frames | `75.0 FPS` |
+| `03_dark_filtration.mp4` | 1000 µs (Dark IR) | Filtered Stream (Isolated LEDs, No Markers) | 83.34 s | 3000 frames | `75.0 FPS` |
+| `04_dark_filtration_gt.mp4` | 1000 µs (Dark IR) | Filtered Stream (No Markers) + VR Ground Truth 3D Pose | 83.34 s | 3000 frames | `75.0 FPS` |
+| `05_dark_blobs.mp4` | 1000 µs (Dark IR) | Filtered Stream Backdrop + 2D Detected Blobs (Cyan Candidates & Red PnP) | 83.34 s | 3000 frames | `75.0 FPS` |
+| `06_dark_blobs_gt.mp4` | 1000 µs (Dark IR) | Filtered Stream Backdrop + 2D Detected Blobs (Cyan Candidates & Red PnP) + VR Ground Truth 3D Pose (Bright Green Axes & Trail) + 3D Trajectory Trails | 83.34 s | 3000 frames | `75.0 FPS` |
+| `07_dark_pnp.mp4` | 1000 µs (Dark IR) | Filtered Stream Backdrop + Raw PnP 3D Pose (RGB Axes & Active Red Markers) + 3D Trajectory Trails | 83.34 s | 3000 frames | `75.0 FPS` |
+| `08_dark_pnp_gt.mp4` | 1000 µs (Dark IR) | Filtered Stream Backdrop + Raw PnP 3D Pose (RGB Axes & Active Red Markers) + VR Ground Truth 3D Pose (Bright Green Axes & Trail) + 3D Trajectory Trails | 83.34 s | 3000 frames | `75.0 FPS` |
+| `09_dark_ekf.mp4` | 1000 µs (Dark IR) | Filtered Stream Backdrop + EKF Smoothed 3D Pose (RGB Axes & Aqua Trail) + 3D Trajectory Trails | 83.34 s | 3000 frames | `75.0 FPS` |
+| `10_dark_ekf_gt.mp4` | 1000 µs (Dark IR) | Filtered Stream Backdrop + EKF Smoothed 3D Pose (RGB Axes & Aqua Trail) + VR Ground Truth 3D Pose (Bright Green Axes & Trail) + 3D Trajectory Trails | 83.34 s | 3000 frames | `75.0 FPS` |
+| `11_bright_raw.mp4` | 10000 µs (Bright Visual) | Raw Footage (No Overlay) | 83.34 s | 3000 frames | `75.0 FPS` |
+| `12_bright_gt.mp4` | 10000 µs (Bright Visual) | VR Ground Truth 3D Pose (Bright Green Axes & Trail) + 3D Trajectory Trails | 83.34 s | 3000 frames | `75.0 FPS` |
 
 ---
 

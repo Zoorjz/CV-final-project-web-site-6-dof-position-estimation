@@ -1,11 +1,12 @@
 /**
  * Main Application Bootstrap
  * 
- * Mounts the data-driven presentation report blocks and initializes
- * the dual-pipeline synchronized video comparison system.
+ * Mounts the data-driven presentation report blocks, initializes
+ * the dual-pipeline synchronized video comparison system, and renders
+ * the benchmark results section.
  */
 
-import { reportBlocks } from "./config/reportContent.js";
+import { presentationBlocks, resultsBlocks } from "./config/reportContent.js";
 import { PIPELINE_CONFIG, getAllPipelineVideoUrls } from "./config/videoPipelineConfig.js";
 import { PresentationRenderer } from "./components/PresentationRenderer.js";
 import { VideoPlayer } from "./components/VideoPlayer.js";
@@ -13,8 +14,8 @@ import { VideoSyncController } from "./components/VideoSyncController.js";
 import { videoPreloader } from "./utils/videoPreloader.js";
 
 document.addEventListener("DOMContentLoaded", () => {
-  // 1. Render Presentation & Report Section
-  const presentationRenderer = new PresentationRenderer("presentation-root", reportBlocks);
+  // 1. Render Presentation & Motivation Section (Top)
+  const presentationRenderer = new PresentationRenderer("presentation-root", presentationBlocks);
   presentationRenderer.render();
 
   // 2. Initialize Left Video Player (3D Pipeline / PnP)
@@ -43,7 +44,11 @@ document.addEventListener("DOMContentLoaded", () => {
     playerRight: playerRight
   });
 
-  // 5. Preload all pipeline video tracks in the background for snappy responsiveness
+  // 5. Render Performance & Robustness Results Section (Under interactive comparison)
+  const resultsRenderer = new PresentationRenderer("results-root", resultsBlocks);
+  resultsRenderer.render();
+
+  // 6. Preload all pipeline video tracks in the background for snappy responsiveness
   const allVideoUrls = getAllPipelineVideoUrls();
   videoPreloader.preloadAll(allVideoUrls);
 

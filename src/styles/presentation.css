@@ -203,7 +203,7 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding-left: 14px; /* Distinct indentation & padding for bullets */
+  padding-left: 14px;
   margin-top: 4px;
 }
 
@@ -229,6 +229,11 @@
   line-height: 1.6;
   color: var(--text-secondary);
   font-weight: 450;
+}
+
+.bullet-text strong {
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 .block-body {
@@ -313,33 +318,9 @@
   padding: 0 8px;
 }
 
-/* Block 1 (Embodied Systems) - Crop 90% and Enlarge inside block */
-.block-embodied-systems .split-grid {
-  grid-template-columns: 1fr 1fr;
-  gap: 40px;
-}
-
-.figure-crop-zoom .figure-img-wrapper {
-  overflow: hidden;
-  max-height: 460px;
-}
-
-.figure-crop-zoom .figure-image {
-  transform: scale(1.14);
-  transform-origin: center center;
-  object-fit: cover;
-  width: 100%;
-  height: 440px;
-  max-height: 440px;
-}
-
-.figure-crop-zoom .figure-image:hover {
-  transform: scale(1.18);
-}
-
-/* Dual Images Layout (Block 4 - Camera Module) */
+/* Dual Images Layout */
 .dual-image-layout {
-  grid-template-columns: 0.9fr 1.1fr;
+  grid-template-columns: 1.15fr 0.85fr;
   gap: 40px;
 }
 
@@ -368,6 +349,104 @@
   font-weight: 500;
 }
 
+/* Toggle Preview Cards Layout (Block 2) */
+.layout-toggle.dual-image-layout {
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 40px;
+}
+
+.layout-toggle .dual-images-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.dual-img-toggle .figure-img-wrapper {
+  height: auto;
+  min-height: 105px;
+  background: linear-gradient(180deg, #ffffff 0%, var(--bg-subtle) 100%);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 18px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.dual-img-toggle:hover .figure-img-wrapper {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.dual-img-toggle .figure-image {
+  max-height: 70px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+}
+
+.dual-img-toggle .figure-caption {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-top: 8px;
+  text-align: center;
+}
+
+/* Academic Benchmark Table (Block 3) */
+.block-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  margin: 24px 0 12px 0;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-xs);
+}
+
+.presentation-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 15px;
+  background-color: var(--bg-surface);
+}
+
+.presentation-table th {
+  background-color: var(--bg-subtle);
+  color: var(--text-primary);
+  font-weight: 700;
+  font-size: 13.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 14px 18px;
+  border-bottom: 2px solid var(--border-color);
+}
+
+.presentation-table td {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.presentation-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.presentation-table tbody tr:hover {
+  background-color: #f1f5f9;
+}
+
+.presentation-table td:nth-child(2),
+.presentation-table td:nth-child(3) {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
 /* Full Width Card (image-bottom) */
 .full-width-card {
   display: flex;
@@ -376,7 +455,7 @@
 }
 
 .full-width-card .card-header {
-  max-width: 900px;
+  max-width: 960px;
 }
 
 .card-media-large .figure-img-wrapper {
@@ -393,7 +472,7 @@
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .split-grid, .reverse-split, .dual-image-layout, .block-embodied-systems .split-grid {
+  .split-grid, .reverse-split, .dual-image-layout, .layout-toggle.dual-image-layout {
     grid-template-columns: 1fr;
     gap: 36px;
   }

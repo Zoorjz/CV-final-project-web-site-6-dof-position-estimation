@@ -101,6 +101,28 @@ export class PresentationRenderer {
     `;
   }
 
+  renderTable(table) {
+    if (!table || !table.headers || !table.rows) return "";
+    return `
+      <div class="block-table-wrapper">
+        <table class="presentation-table">
+          <thead>
+            <tr>
+              ${table.headers.map(h => `<th>${h}</th>`).join("")}
+            </tr>
+          </thead>
+          <tbody>
+            ${table.rows.map(row => `
+              <tr>
+                ${row.map(cell => `<td>${cell}</td>`).join("")}
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
   renderBodyContent(block) {
     let bodyHtml = "";
     if (block.content && block.content.length) {
@@ -108,6 +130,9 @@ export class PresentationRenderer {
     }
     if (block.subsections) {
       bodyHtml += this.renderSubsections(block.subsections);
+    }
+    if (block.table) {
+      bodyHtml += this.renderTable(block.table);
     }
     return bodyHtml;
   }
@@ -146,8 +171,9 @@ export class PresentationRenderer {
 
   renderDualImageBlock(block) {
     const images = block.images || (block.image ? [block.image] : []);
+    const cardClass = block.cardType === "toggle" ? "dual-img-card dual-img-toggle" : "dual-img-card";
     return `
-      <div class="block-inner split-grid dual-image-layout">
+      <div class="block-inner split-grid dual-image-layout ${block.cardType ? `layout-${block.cardType}` : ""}">
         <div class="block-text-column">
           ${this.renderHeaderTag(block)}
           <h2 class="block-title">${block.title}</h2>
@@ -156,7 +182,7 @@ export class PresentationRenderer {
         </div>
         <div class="block-media-column dual-media-column">
           <div class="dual-images-grid">
-            ${images.map(img => this.renderMedia(img, false, "dual-img-card")).join("")}
+            ${images.map(img => this.renderMedia(img, false, cardClass)).join("")}
           </div>
         </div>
       </div>
@@ -171,9 +197,11 @@ export class PresentationRenderer {
           <h2 class="block-title">${block.title}</h2>
           ${this.renderBodyContent(block)}
         </div>
-        <div class="card-media-large">
-          ${this.renderMedia(block.image, true)}
-        </div>
+        ${block.image ? `
+          <div class="card-media-large">
+            ${this.renderMedia(block.image, true)}
+          </div>
+        ` : ""}
         ${this.renderHighlights(block.highlights)}
       </div>
     `;
@@ -185,6 +213,7 @@ export class PresentationRenderer {
         ${this.renderHeaderTag(block)}
         <h2 class="block-title">${block.title}</h2>
         ${this.renderBodyContent(block)}
+        ${this.renderHighlights(block.highlights)}
       </div>
     `;
   }

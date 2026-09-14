@@ -1,15 +1,15 @@
 # Data-Driven 6-DoF Tracking Render Dataset
 
-**Generation Timestamp**: `20260914_165949`  
+**Generation Timestamp**: `20260914_174144`  
 **Pipeline Mode**: `ALL`  
-**Output Directory**: `C:\OneDrive_1trb\OneDrive\UTN Studies\CV\Final Proj\web-site\data\renders\data-driven\renders_20260914_165911\simulated`  
+**Output Directory**: `C:\OneDrive_1trb\OneDrive\UTN Studies\CV\Final Proj\web-site\data\renders\data-driven\renders_20260914_173600\simulated`  
 
 ---
 
 ## 1. Video Specifications & Data-Driven Pipeline Breakdown
 
-* **Start Frame**: `2131`
-* **Frame Count**: `200`
+* **Start Frame**: `1250`
+* **Frame Count**: `3000`
 * **Trails Enabled**: `True` (Length: `75` frames)
 * **HUD Overlay**: `Bottom-Left FPS Badge & Bottom-Right Legend`
 
@@ -49,22 +49,22 @@
 
 | Filename | Shutter / Stream | Pipeline Stage & Visual Layers Included | Duration | Frame Count | FPS HUD |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `01_bright_raw.mp4` | 10000 µs (Bright Visual) | Raw Footage (No Overlay) | 5.56 s | 200 frames | `75.0 FPS` |
-| `02_bright_gt.mp4` | 10000 µs (Bright Visual) | VR Ground Truth 3D Pose (Bright Green/Yellow/Orange Axes & Trail) | 5.56 s | 200 frames | `75.0 FPS` |
-| `03_dark_raw.mp4` | 1000 µs (Dark IR) | Raw Footage (No Overlay) | 5.56 s | 200 frames | `75.0 FPS` |
-| `04_dark_gt.mp4` | 1000 µs (Dark IR) | VR Ground Truth 3D Pose (Bright Green/Yellow/Orange Axes & Trail) | 5.56 s | 200 frames | `75.0 FPS` |
-| `05_cnn_raw.mp4` | 1000 µs (Dark IR) | Dark Video + Raw CNN Direct 6-DoF Pose (Orchid Axes & Violet Trail) | 5.56 s | 200 frames | `5.0 FPS` |
-| `06_cnn_gt.mp4` | 1000 µs (Dark IR) | Dark Video + Raw CNN Direct 6-DoF Pose (Orchid Axes & Violet Trail) + VR Ground Truth 3D Pose | 5.56 s | 200 frames | `5.0 FPS` |
-| `07_cnn_kf_raw.mp4` | 1000 µs (Dark IR) | Dark Video + Kalman Filtered CNN 6-DoF Pose (Deep Violet Axes & Indigo Trail) | 5.56 s | 200 frames | `5.0 FPS` |
-| `08_cnn_kf_gt.mp4` | 1000 µs (Dark IR) | Dark Video + Kalman Filtered CNN 6-DoF Pose (Deep Violet Axes & Indigo Trail) + VR Ground Truth 3D Pose | 5.56 s | 200 frames | `5.0 FPS` |
-| `05_dark_filtration.mp4` | 1000 µs (Dark IR) | Filtered Stream (Isolated LEDs, No Markers) | 5.56 s | 200 frames | `75.0 FPS` |
-| `06_dark_filtration_gt.mp4` | 1000 µs (Dark IR) | Filtered Stream (No Markers) + VR Ground Truth 3D Pose | 5.56 s | 200 frames | `75.0 FPS` |
-| `07_dark_blobs.mp4` | 1000 µs (Dark IR) | Filtered Stream + 2D Detected Blobs (Cyan Candidates & Red Tracking) | 5.56 s | 200 frames | `25.0 FPS` |
-| `08_dark_blobs_gt.mp4` | 1000 µs (Dark IR) | Filtered Stream + 2D Detected Blobs (Cyan Candidates & Red Tracking) + VR Ground Truth 3D Pose | 5.56 s | 200 frames | `25.0 FPS` |
-| `09_ml_raw.mp4` | 1000 µs (Dark IR) | Filtered Backdrop + Raw ML Feature Regressor 6-DoF Pose (Coral Axes & Amber Trail) | 5.56 s | 200 frames | `25.0 FPS` |
-| `10_ml_gt.mp4` | 1000 µs (Dark IR) | Filtered Backdrop + Raw ML Feature Regressor 6-DoF Pose (Coral Axes & Amber Trail) + VR Ground Truth 3D Pose | 5.56 s | 200 frames | `25.0 FPS` |
-| `11_ml_kf_raw.mp4` | 1000 µs (Dark IR) | Filtered Backdrop + Kalman Filtered ML 6-DoF Pose (Tangerine Axes & Canary Gold Trail) | 5.56 s | 200 frames | `25.0 FPS` |
-| `12_ml_kf_gt.mp4` | 1000 µs (Dark IR) | Filtered Backdrop + Kalman Filtered ML 6-DoF Pose (Tangerine Axes & Canary Gold Trail) + VR Ground Truth 3D Pose | 5.56 s | 200 frames | `25.0 FPS` |
+| `01_bright_raw.mp4` | 10000 µs (Bright Visual) | Raw Footage (No Overlay) | 83.34 s | 3000 frames | `75.0 FPS` |
+| `02_bright_gt.mp4` | 10000 µs (Bright Visual) | VR Ground Truth 3D Pose (Bright Green/Yellow/Orange Axes & Trail) | 83.34 s | 3000 frames | `75.0 FPS` |
+| `03_dark_raw.mp4` | 1000 µs (Dark IR) | Raw Footage (No Overlay) | 83.34 s | 3000 frames | `75.0 FPS` |
+| `04_dark_gt.mp4` | 1000 µs (Dark IR) | VR Ground Truth 3D Pose (Bright Green/Yellow/Orange Axes & Trail) | 83.34 s | 3000 frames | `75.0 FPS` |
+| `05_cnn_raw.mp4` | 1000 µs (Dark IR) | Dark Video + Raw CNN Direct 6-DoF Pose (Orchid Axes & Violet Trail) | 83.34 s | 3000 frames | `5.0 FPS` |
+| `06_cnn_gt.mp4` | 1000 µs (Dark IR) | Dark Video + Raw CNN Direct 6-DoF Pose (Orchid Axes & Violet Trail) + VR Ground Truth 3D Pose | 83.34 s | 3000 frames | `5.0 FPS` |
+| `07_cnn_kf_raw.mp4` | 1000 µs (Dark IR) | Dark Video + Kalman Filtered CNN 6-DoF Pose (Deep Violet Axes & Indigo Trail) | 83.34 s | 3000 frames | `5.0 FPS` |
+| `08_cnn_kf_gt.mp4` | 1000 µs (Dark IR) | Dark Video + Kalman Filtered CNN 6-DoF Pose (Deep Violet Axes & Indigo Trail) + VR Ground Truth 3D Pose | 83.34 s | 3000 frames | `5.0 FPS` |
+| `05_dark_filtration.mp4` | 1000 µs (Dark IR) | Filtered Stream (Isolated LEDs, No Markers) | 83.34 s | 3000 frames | `75.0 FPS` |
+| `06_dark_filtration_gt.mp4` | 1000 µs (Dark IR) | Filtered Stream (No Markers) + VR Ground Truth 3D Pose | 83.34 s | 3000 frames | `75.0 FPS` |
+| `07_dark_blobs.mp4` | 1000 µs (Dark IR) | Filtered Stream + 2D Detected Blobs (Cyan Candidates & Red Tracking) | 83.34 s | 3000 frames | `25.0 FPS` |
+| `08_dark_blobs_gt.mp4` | 1000 µs (Dark IR) | Filtered Stream + 2D Detected Blobs (Cyan Candidates & Red Tracking) + VR Ground Truth 3D Pose | 83.34 s | 3000 frames | `25.0 FPS` |
+| `09_ml_raw.mp4` | 1000 µs (Dark IR) | Filtered Backdrop + Raw ML Feature Regressor 6-DoF Pose (Coral Axes & Amber Trail) | 83.34 s | 3000 frames | `25.0 FPS` |
+| `10_ml_gt.mp4` | 1000 µs (Dark IR) | Filtered Backdrop + Raw ML Feature Regressor 6-DoF Pose (Coral Axes & Amber Trail) + VR Ground Truth 3D Pose | 83.34 s | 3000 frames | `25.0 FPS` |
+| `11_ml_kf_raw.mp4` | 1000 µs (Dark IR) | Filtered Backdrop + Kalman Filtered ML 6-DoF Pose (Tangerine Axes & Canary Gold Trail) | 83.34 s | 3000 frames | `25.0 FPS` |
+| `12_ml_kf_gt.mp4` | 1000 µs (Dark IR) | Filtered Backdrop + Kalman Filtered ML 6-DoF Pose (Tangerine Axes & Canary Gold Trail) + VR Ground Truth 3D Pose | 83.34 s | 3000 frames | `25.0 FPS` |
 
 ---
 

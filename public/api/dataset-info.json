@@ -1,9 +1,9 @@
 {
-  "activeDirectory": "renders_20260914_165911",
-  "timestamp": "20260914_165911",
-  "frameCount": 200,
-  "duration": 5.56,
-  "startFrame": 2131,
+  "activeDirectory": "renders_20260914_173600",
+  "timestamp": "20260914_173600",
+  "frameCount": 3000,
+  "duration": 83.34,
+  "startFrame": 1250,
   "fps": 35.997,
   "timeSyncOffset": 18.97
 }
