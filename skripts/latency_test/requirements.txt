@@ -1,0 +1,21 @@
+# Requirements for 6-DoF Real-Time Latency Testing
+# For Raspberry Pi (ARM64) & Desktop CPU (No NVIDIA CUDA needed)
+
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# Core numerical & image processing (NumPy 1.x is required for Picamera2 / simplejpeg C-ABI compatibility)
+numpy<2.0.0,>=1.24.0
+scipy>=1.9.0
+
+opencv-python>=4.7.0
+pillow>=9.0.0
+pyyaml>=6.0
+pandas>=1.5.0
+
+
+# CPU-only PyTorch & Ultralytics
+torch>=2.0.0
+ultralytics==8.4.121
+
+# Optional ONNX Runtime for static graph benchmarking
+onnxruntime>=1.15.0
