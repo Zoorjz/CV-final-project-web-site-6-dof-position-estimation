@@ -137,10 +137,17 @@ export const PIPELINE_CONFIG = {
 };
 ```
 
-#### Ground Truth Mapping Rule
-`resolveVideoUrl(stage, showGT)`:
+#### Ground Truth & Simulation Mapping Rule
+`resolveVideoUrl(stage, showGT, isSimulated = false)`:
 - When `showGT == true`: returns `stage.files.gt || stage.files.raw`.
 - When `showGT == false`: returns `stage.files.raw`.
+- When `isSimulated == true`: maps target filename into the nested `simulated/` subdirectory (e.g. `data-driven/simulated/05_cnn_raw.mp4` or `geometry-based/simulated/07_dark_pnp.mp4`).
+
+#### Raspberry Pi 4B Hardware FPS Emulation Contract
+- **PnP / Classical Geometry**: 75.0 FPS throughput capacity (updates every camera frame @ 36 FPS camera input).
+- **ML (Feature Regressor)**: 25.0 FPS throughput capacity (updates pose/blobs/trail every ~40 ms).
+- **CNN (Direct Deep Pose)**: 5.0 FPS throughput capacity (updates pose/trail every ~200 ms with sample-and-hold latency & discrete stepped trail).
+- **All Renders**: Include a large, high-visibility bottom-left HUD badge displaying active frame rate (e.g. `5.0 FPS`, `25.0 FPS`, `75.0 FPS`, `36.0 FPS`) with model-matched glowing status dot.
 
 ---
 

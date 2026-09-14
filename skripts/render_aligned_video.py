@@ -1,7 +1,7 @@
-a#!/usr/bin/env python3
+#!/usr/bin/env python3
 """render_aligned_video.py
 
-Generates synchronized benchmark video combinations without on-screen text overlays,
+Generates synchronized benchmark video combinations with prominent FPS HUD badges,
 demonstrating the complete tracking pipeline step-by-step:
   1.  01_dark_raw.mp4            : Dark video (1000us shutter), raw footage.
   2.  02_dark_gt.mp4             : Dark video + Ground Truth 3D pose.
@@ -17,15 +17,12 @@ demonstrating the complete tracking pipeline step-by-step:
   12. 12_bright_gt.mp4           : Bright video + Ground Truth 3D pose.
 
 Outputs are placed into a newly generated timestamped directory:
-  data/renders/renders_YYYYMMDD_HHMMSS/
-along with a comprehensive settings & descriptions Markdown file (README.md).
+  data/renders/geometry-based/renders_YYYYMMDD_HHMMSS/
+along with an emulated FPS subdirectory (`simulated/`) and documentation (README.md).
 
 Usage:
     # Generate all 12 video combinations with default tuned EKF:
     python skripts/render_aligned_video.py --start 2131 --count 200
-
-    # Adjust EKF smoothing (higher R = heavier smoothing, higher Q = more agile tracking):
-    python skripts/render_aligned_video.py --start 2131 --count 200 --ekf-r-scale 5.0 --ekf-q-scale 2.0
 """
 
 from __future__ import annotations
@@ -146,6 +143,58 @@ def draw_trail_legend(
         text_x = line_end_x + spacing
         text_y = item_y + 4
         cv2.putText(vis, label, (text_x, text_y), font, font_scale, (240, 240, 240), font_thickness, cv2.LINE_AA)
+
+
+def draw_fps_badge(
+    vis: np.ndarray,
+    fps_text: str,
+    status_color: tuple[int, int, int] = (0, 255, 150),
+    margin_left: int = 14,
+    margin_bottom: int = 14
+) -> None:
+    """Draws a prominent, high-contrast HUD FPS counter in the bottom-left corner."""
+    if not fps_text:
+        return
+
+    font = cv2.FONT_HERSHEY_DUPLEX
+    font_scale = 0.70
+    font_thickness = 2
+
+    (tw, th), baseline = cv2.getTextSize(fps_text, font, font_scale, font_thickness)
+    dot_radius = 4
+    dot_spacing = 8
+    pad_x = 12
+    pad_y = 7
+
+    box_w = pad_x * 2 + dot_radius * 2 + dot_spacing + tw
+    box_h = pad_y * 2 + th
+
+    h, w = vis.shape[:2]
+    x1 = margin_left
+    y2 = h - margin_bottom
+    y1 = y2 - box_h
+    x2 = x1 + box_w
+
+    if x2 > w or y1 < 0:
+        return
+
+    overlay = vis.copy()
+    # Dark modern HUD background
+    cv2.rectangle(overlay, (x1, y1), (x2, y2), (15, 23, 42), -1)
+    # Subtle border
+    cv2.rectangle(overlay, (x1, y1), (x2, y2), (70, 80, 95), 1, cv2.LINE_AA)
+    cv2.addWeighted(overlay, 0.85, vis, 0.15, 0, vis)
+
+    # Status indicator dot
+    dot_cx = x1 + pad_x + dot_radius
+    dot_cy = y1 + box_h // 2
+    cv2.circle(vis, (dot_cx, dot_cy), dot_radius, status_color, -1, cv2.LINE_AA)
+    cv2.circle(vis, (dot_cx, dot_cy), dot_radius + 2, status_color, 1, cv2.LINE_AA)
+
+    # FPS Text
+    text_x = dot_cx + dot_radius + dot_spacing
+    text_y = y1 + pad_y + th
+    cv2.putText(vis, fps_text, (text_x, text_y), font, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
 
 
 # ---------------------------------------------------------------------------
@@ -519,9 +568,12 @@ def render_video_variant(
     marker_pts_3d: np.ndarray,
     df_pnp: pd.DataFrame | None,
     start_frame: int = 0,
-    count_frames: int | None = None
+    count_frames: int | None = None,
+    fps_badge_text: str | None = None,
+    simulated: bool = False,
+    target_fps: float = 75.0
 ) -> dict:
-    """Renders a single video variant with the specified pipeline visual layers."""
+    """Renders a single video variant with the specified pipeline visual layers and FPS HUD."""
     df_ts = pd.read_csv(timestamps_path)
     cap = cv2.VideoCapture(video_path)
     total_in_frames = len(df_ts) if df_ts is not None else int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -538,10 +590,15 @@ def render_video_variant(
     end_frame = total_in_frames if count_frames is None else min(start_frame + count_frames, total_in_frames)
     frames_to_process = end_frame - start_frame
 
+    # Auto-resolve FPS badge text if not explicitly provided
+    if fps_badge_text is None:
+        fps_badge_text = f"{target_fps:.1f} FPS"
+
     print(f"\n[Render {mode_id}] -> {output_filename}")
     print(f"  Stream: {stream_type.upper()} ({width}x{height} @ {calculated_fps:.2f} fps) | Frames: {start_frame}..{end_frame-1} ({frames_to_process} frames)")
-    print(f"  Layers: FilteredBase={use_filtered_stream}, Blobs={show_blobs}, PnP={show_pnp}, EKF={show_ekf}, GT={show_gt}, Trails={show_trails}")
+    print(f"  Layers: FilteredBase={use_filtered_stream}, Blobs={show_blobs}, PnP={show_pnp}, EKF={show_ekf}, GT={show_gt}, Trails={show_trails}, FPS_HUD='{fps_badge_text}'")
 
+    Path(output_filename).parent.mkdir(parents=True, exist_ok=True)
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     writer = cv2.VideoWriter(output_filename, fourcc, calculated_fps, (width, height))
 
@@ -550,7 +607,6 @@ def render_video_variant(
             cap.grab()
 
     pnp_trail = []
-    model_trail = []
     ekf_trail = []
     gt_trail = []
     is_dark = (stream_type == 'dark')
@@ -564,6 +620,14 @@ def render_video_variant(
             legend_items.append(("EKF (13-State)", (220, 255, 0)))
         if show_gt:
             legend_items.append(("Ground Truth", (0, 255, 0)))
+
+    # For simulated tracking rate below camera FPS (if applicable)
+    last_pnp_update_time = -1.0
+    held_pnp_pose = None
+    held_ekf_pose = None
+    prev_t_video = None
+    prev_pnp_raw = None
+    prev_ekf_raw = None
 
     for idx, f_idx in enumerate(range(start_frame, end_frame)):
         ret, frame = cap.read()
@@ -617,10 +681,26 @@ def render_video_variant(
                     cv2.circle(vis, (px, py), 8, (0, 0, 255), 2, cv2.LINE_AA)
                     cv2.circle(vis, (px, py), 2, (0, 0, 255), -1, cv2.LINE_AA)
 
-        # Layer 2: Ground Truth 3D Pose
+        # Layer 2: Ground Truth 3D Pose (with continuous 75 FPS real-life VR sampling)
         if show_gt:
             gt_in_bounds = (t_gt >= t_gt_all[0]) and (t_gt <= t_gt_all[-1])
             if gt_in_bounds:
+                # Sub-frame 75 FPS intermediate point from high-rate VR tracker
+                if show_trails and prev_t_video is not None:
+                    t_mid = (prev_t_video + t_video) / 2.0
+                    t_gt_mid = t_mid + dt_sync
+                    if t_gt_all[0] <= t_gt_mid <= t_gt_all[-1]:
+                        p_gt_mid = np.array([np.interp(t_gt_mid, t_gt_all, gt_pos_rhs[:, d]) for d in range(3)])
+                        q_gt_mid = np.array([np.interp(t_gt_mid, t_gt_all, gt_quats_rhs[:, d]) for d in range(4)])
+                        q_gt_mid /= np.linalg.norm(q_gt_mid)
+                        R_gt_mid = R_scipy.from_quat(q_gt_mid).as_matrix()
+                        R_gt_cam_mid = R_X @ R_gt_mid @ R_Y
+                        p_gt_cam_mid = R_X @ (R_gt_mid @ t_Y + p_gt_mid) + t_X
+                        tvec_gt_cam_mm_mid = (p_gt_cam_mid * 1000.0).reshape(3, 1)
+                        rvec_gt_mid, _ = cv2.Rodrigues(R_gt_cam_mid)
+                        proj_mid, _ = cv2.projectPoints(np.zeros((1, 3)), rvec_gt_mid, tvec_gt_cam_mm_mid, K, dist)
+                        gt_trail.append(tuple(proj_mid.reshape(-1, 2)[0].astype(int)))
+
                 p_gt_vr = np.array([np.interp(t_gt, t_gt_all, gt_pos_rhs[:, d]) for d in range(3)])
                 q_gt_vr = np.array([np.interp(t_gt, t_gt_all, gt_quats_rhs[:, d]) for d in range(4)])
                 q_gt_vr /= np.linalg.norm(q_gt_vr)
@@ -638,7 +718,7 @@ def render_video_variant(
                     colors=((0, 255, 0), (50, 255, 255), (0, 165, 255))
                 )
 
-                # Trail point
+                # Trail point at current frame
                 if show_trails:
                     rvec_gt_cam, _ = cv2.Rodrigues(R_gt_cam)
                     proj_gt_origin, _ = cv2.projectPoints(np.zeros((1, 3)), rvec_gt_cam, tvec_gt_cam_mm, K, dist)
@@ -648,63 +728,106 @@ def render_video_variant(
                 if show_trails:
                     gt_trail.append(None)
 
-        # Layer 3: Raw PnP 3D Pose
-        if show_pnp and df_pnp is not None:
-            if f_idx < len(df_pnp) and df_pnp['valid'].iloc[f_idx]:
-                row = df_pnp.iloc[f_idx]
-                tvec_pnp_mm = np.array([[row['tx_mm']], [row['ty_mm']], [row['tz_mm']]])
-                q_pnp = np.array([row['qx'], row['qy'], row['qz'], row['qw']])
-                R_pnp_cam = R_scipy.from_quat(q_pnp).as_matrix()
-                rvec_pnp_cam, _ = cv2.Rodrigues(R_pnp_cam)
+        # Check update timing for simulated PnP/EKF rate
+        should_update_algo = True
+        if simulated and target_fps < calculated_fps:
+            if last_pnp_update_time < 0 or (t_video - last_pnp_update_time) >= (1.0 / target_fps - 1e-4):
+                should_update_algo = True
+                last_pnp_update_time = t_video
+            else:
+                should_update_algo = False
 
-                # 3D Coordinate Axes (Red X, Green Y, Blue Z)
+        # Layer 3: Raw PnP 3D Pose (with 75 FPS real-life continuous motion trail)
+        if show_pnp and df_pnp is not None:
+            if should_update_algo:
+                if f_idx < len(df_pnp) and df_pnp['valid'].iloc[f_idx]:
+                    row = df_pnp.iloc[f_idx]
+                    tvec_pnp_mm = np.array([[row['tx_mm']], [row['ty_mm']], [row['tz_mm']]])
+                    q_pnp = np.array([row['qx'], row['qy'], row['qz'], row['qw']])
+                    R_pnp_cam = R_scipy.from_quat(q_pnp).as_matrix()
+                    held_pnp_pose = (R_pnp_cam, tvec_pnp_mm)
+
+                    if show_trails:
+                        # Sub-frame 75 FPS intermediate interpolation
+                        if prev_pnp_raw is not None:
+                            prev_R, prev_tvec, prev_q = prev_pnp_raw
+                            tvec_mid = (prev_tvec + tvec_pnp_mm) / 2.0
+                            q_mid = prev_q + q_pnp
+                            q_mid /= np.linalg.norm(q_mid)
+                            R_mid = R_scipy.from_quat(q_mid).as_matrix()
+                            rvec_mid, _ = cv2.Rodrigues(R_mid)
+                            proj_mid, _ = cv2.projectPoints(np.zeros((1, 3)), rvec_mid, tvec_mid, K, dist)
+                            pnp_trail.append(tuple(proj_mid.reshape(-1, 2)[0].astype(int)))
+
+                        rvec_pnp_cam, _ = cv2.Rodrigues(R_pnp_cam)
+                        proj_pnp_origin, _ = cv2.projectPoints(np.zeros((1, 3)), rvec_pnp_cam, tvec_pnp_mm, K, dist)
+                        pnp_pt_2d = proj_pnp_origin.reshape(-1, 2)[0]
+                        pnp_trail.append((int(pnp_pt_2d[0]), int(pnp_pt_2d[1])))
+                        prev_pnp_raw = (R_pnp_cam, tvec_pnp_mm, q_pnp)
+                else:
+                    held_pnp_pose = None
+                    prev_pnp_raw = None
+                    if show_trails:
+                        pnp_trail.append(None)
+
+            if held_pnp_pose is not None:
+                R_pnp_cam, tvec_pnp_mm = held_pnp_pose
                 draw_3d_axes_clean(
                     vis, R_pnp_cam, tvec_pnp_mm, K, dist,
                     axis_length_mm=85.0, thickness=2,
                     colors=((0, 0, 255), (0, 255, 0), (255, 100, 0))
                 )
 
-                # Trail point
-                if show_trails:
-                    proj_pnp_origin, _ = cv2.projectPoints(np.zeros((1, 3)), rvec_pnp_cam, tvec_pnp_mm, K, dist)
-                    pnp_pt_2d = proj_pnp_origin.reshape(-1, 2)[0]
-                    pnp_trail.append((int(pnp_pt_2d[0]), int(pnp_pt_2d[1])))
-            else:
-                if show_trails:
-                    pnp_trail.append(None)
-
-        # Layer 4: EKF Smoothed 3D Pose
+        # Layer 4: EKF Smoothed 3D Pose (with 75 FPS real-life continuous motion trail)
         if show_ekf and df_pnp is not None and 'ekf_valid' in df_pnp.columns:
-            if f_idx < len(df_pnp) and df_pnp['ekf_valid'].iloc[f_idx]:
-                row = df_pnp.iloc[f_idx]
-                tvec_ekf_mm = np.array([[row['ekf_tx_mm']], [row['ekf_ty_mm']], [row['ekf_tz_mm']]])
-                q_ekf = np.array([row['ekf_qx'], row['ekf_qy'], row['ekf_qz'], row['ekf_qw']])
-                R_ekf_cam = R_scipy.from_quat(q_ekf).as_matrix()
-                rvec_ekf_cam, _ = cv2.Rodrigues(R_ekf_cam)
+            if should_update_algo:
+                if f_idx < len(df_pnp) and df_pnp['ekf_valid'].iloc[f_idx]:
+                    row = df_pnp.iloc[f_idx]
+                    tvec_ekf_mm = np.array([[row['ekf_tx_mm']], [row['ekf_ty_mm']], [row['ekf_tz_mm']]])
+                    q_ekf = np.array([row['ekf_qx'], row['ekf_qy'], row['ekf_qz'], row['ekf_qw']])
+                    R_ekf_cam = R_scipy.from_quat(q_ekf).as_matrix()
+                    held_ekf_pose = (R_ekf_cam, tvec_ekf_mm)
 
-                # 3D Coordinate Axes (Red X, Green Y, Deep Sky Blue Z)
+                    if show_trails:
+                        # Sub-frame 75 FPS intermediate interpolation
+                        if prev_ekf_raw is not None:
+                            prev_R, prev_tvec, prev_q = prev_ekf_raw
+                            tvec_mid = (prev_tvec + tvec_ekf_mm) / 2.0
+                            q_mid = prev_q + q_ekf
+                            q_mid /= np.linalg.norm(q_mid)
+                            R_mid = R_scipy.from_quat(q_mid).as_matrix()
+                            rvec_mid, _ = cv2.Rodrigues(R_mid)
+                            proj_mid, _ = cv2.projectPoints(np.zeros((1, 3)), rvec_mid, tvec_mid, K, dist)
+                            ekf_trail.append(tuple(proj_mid.reshape(-1, 2)[0].astype(int)))
+
+                        rvec_ekf_cam, _ = cv2.Rodrigues(R_ekf_cam)
+                        proj_ekf_origin, _ = cv2.projectPoints(np.zeros((1, 3)), rvec_ekf_cam, tvec_ekf_mm, K, dist)
+                        ekf_pt_2d = proj_ekf_origin.reshape(-1, 2)[0]
+                        ekf_trail.append((int(ekf_pt_2d[0]), int(ekf_pt_2d[1])))
+                        prev_ekf_raw = (R_ekf_cam, tvec_ekf_mm, q_ekf)
+                else:
+                    held_ekf_pose = None
+                    prev_ekf_raw = None
+                    if show_trails:
+                        ekf_trail.append(None)
+
+            if held_ekf_pose is not None:
+                R_ekf_cam, tvec_ekf_mm = held_ekf_pose
                 draw_3d_axes_clean(
                     vis, R_ekf_cam, tvec_ekf_mm, K, dist,
                     axis_length_mm=85.0, thickness=2,
                     colors=((0, 0, 255), (0, 255, 0), (255, 150, 0))
                 )
 
-                # Trail point
-                if show_trails:
-                    proj_ekf_origin, _ = cv2.projectPoints(np.zeros((1, 3)), rvec_ekf_cam, tvec_ekf_mm, K, dist)
-                    ekf_pt_2d = proj_ekf_origin.reshape(-1, 2)[0]
-                    ekf_trail.append((int(ekf_pt_2d[0]), int(ekf_pt_2d[1])))
-            else:
-                if show_trails:
-                    ekf_trail.append(None)
+        prev_t_video = t_video
 
         # Layer 5: Fading 3D Trajectory Trails
         if show_trails:
-            if len(pnp_trail) > trail_length:
+            while len(pnp_trail) > trail_length:
                 pnp_trail.pop(0)
-            if len(ekf_trail) > trail_length:
+            while len(ekf_trail) > trail_length:
                 ekf_trail.pop(0)
-            if len(gt_trail) > trail_length:
+            while len(gt_trail) > trail_length:
                 gt_trail.pop(0)
 
             # PnP Raw Trail (Cyan fading)
@@ -742,6 +865,9 @@ def render_video_variant(
 
             if legend_items:
                 draw_trail_legend(vis, legend_items)
+
+        # Draw Prominent HUD FPS Counter on Bottom-Left Corner
+        draw_fps_badge(vis, fps_text=fps_badge_text, status_color=(0, 255, 150))
 
         writer.write(vis)
 
@@ -783,6 +909,7 @@ def render_video_variant(
         },
         "frames": frames_to_process,
         "fps": calculated_fps,
+        "fps_badge": fps_badge_text,
         "duration_s": frames_to_process / calculated_fps
     }
 
@@ -798,7 +925,7 @@ def generate_metadata_markdown(
     trail_length: int,
     ekf_settings: dict
 ):
-    """Generates the README.md documentation file inside the timestamped output directory."""
+    """Generates the README.md documentation file inside the output directory."""
     dt_sync = calib_data["time_offset_seconds"]
     cam_trans = calib_data["camera_to_vr_extrinsics"]["translation_m"]
     cam_euler = calib_data["camera_to_vr_extrinsics"]["rotation_euler_deg"]
@@ -806,7 +933,7 @@ def generate_metadata_markdown(
     ctrl_euler = calib_data["controller_to_bar_extrinsics"]["rotation_euler_deg"]
     metrics = calib_data.get("metrics", {})
 
-    md_content = f"""# Tracking Video Render Dataset
+    md_content = f"""# Tracking Video Render Dataset (Geometry-Based PnP & EKF)
 
 **Generation Timestamp**: `{timestamp_str}`  
 **Output Directory**: `{out_dir.resolve()}`  
@@ -818,13 +945,13 @@ def generate_metadata_markdown(
 * **Start Frame**: `{start_frame}`
 * **Frame Count**: `{count_frames if count_frames is not None else 'All Frames'}`
 * **Trails Enabled**: `{show_trails}` (Length: `{trail_length}` frames)
-* **Text / HUD Overlay**: `Disabled (Clean Visuals)`
+* **HUD Overlay**: `Bottom-Left FPS Badge & Bottom-Right Legend`
 
 ### Sequential Pipeline Stages
 1. **Raw Acquisition**: Unprocessed optical camera streams (1000 µs dark and 10000 µs bright).
 2. **Optical Pre-Filtration**: Multi-stage filtering ($3\\times 3$ Gaussian blur, dynamic peak threshold $T \\ge 180$, morphological opening) completely suppresses background noise and isolates genuine LED emissions without any overlay markers.
 3. **2D Blob Extraction**: High-precision sub-pixel centroid moment analysis with circularity gating ($4\\pi A / P^2 > 0.25$) rendered onto the filtered stream.
-4. **PnP 6-DoF Rigid Body Pose**: SQPnP pose estimation rendered with RGB 3D coordinate axes and 4 active tracking markers on the filtered optical stream.
+4. **PnP 6-DoF Rigid Body Pose**: SQPnP pose estimation rendered with RGB 3D coordinate axes and 4 active tracking markers on the filtered optical stream (75 FPS capacity on Raspberry Pi 4B).
 5. **13-State EKF Smoothing**: Real-time constant-velocity/angular-velocity filtering with tunable dynamics.
 
 ### EKF Filter Parameters
@@ -848,8 +975,8 @@ def generate_metadata_markdown(
 
 ## 2. Generated Video Files Description
 
-| Filename | Shutter / Stream | Pipeline Visual Layers Included | Duration | Frame Count |
-| :--- | :--- | :--- | :--- | :--- |
+| Filename | Shutter / Stream | Pipeline Visual Layers Included | Duration | Frame Count | FPS HUD |
+| :--- | :--- | :--- | :--- | :--- | :--- |
 """
     for v in video_records:
         layers_desc = []
@@ -867,7 +994,7 @@ def generate_metadata_markdown(
             if v["layers"]["ekf"]:
                 layers_desc.append("EKF Smoothed 3D Pose (RGB Axes & Aqua Trail)")
             if v["layers"]["gt"]:
-                layers_desc.append("VR Ground Truth 3D Pose (Magenta/Yellow Axes & Trail)")
+                layers_desc.append("VR Ground Truth 3D Pose (Bright Green Axes & Trail)")
             if v["layers"]["trails"] and (v["layers"]["pnp"] or v["layers"]["ekf"] or v["layers"]["gt"]):
                 layers_desc.append("3D Trajectory Trails")
             if not layers_desc:
@@ -875,7 +1002,7 @@ def generate_metadata_markdown(
         
         desc_str = " + ".join(layers_desc)
         shutter_str = "1000 µs (Dark IR)" if v["stream"] == "dark" else "10000 µs (Bright Visual)"
-        md_content += f"| `{v['filename']}` | {shutter_str} | {desc_str} | {v['duration_s']:.2f} s | {v['frames']} frames |\n"
+        md_content += f"| `{v['filename']}` | {shutter_str} | {desc_str} | {v['duration_s']:.2f} s | {v['frames']} frames | `{v.get('fps_badge', 'FPS')}` |\n"
 
     md_content += """
 ---
@@ -898,6 +1025,217 @@ def generate_metadata_markdown(
     print(f"\n[Settings] Saved settings and video descriptions to {readme_path}")
 
 
+def render_all_geom_variants(
+    out_dir: Path,
+    is_simulated: bool,
+    args,
+    calib_data,
+    R_X, t_X, R_Y, t_Y,
+    K, dist, marker_pts_3d,
+    df_gt, t_gt_all, gt_pos_rhs, gt_quats_rhs,
+    df_pnp,
+    dt_sync
+) -> list[dict]:
+    """Renders all 12 video combinations to the specified directory."""
+    show_trails = not args.no_trails
+    video_records = []
+    pnp_fps_label = "75.0 FPS"
+    raw_fps_label = "75.0 FPS"
+
+    # 1. Dark video raw
+    rec = render_video_variant(
+        mode_id=f"1/12{'-sim' if is_simulated else ''}",
+        output_filename=str(out_dir / "01_dark_raw.mp4"),
+        stream_type="dark",
+        use_filtered_stream=False, show_blobs=False, show_pnp=False, show_ekf=False, show_gt=False,
+        show_trails=False, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+        video_path=args.dark_video, timestamps_path=args.dark_ts,
+        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+        dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
+        K=K, dist=dist, marker_pts_3d=marker_pts_3d, df_pnp=df_pnp,
+        start_frame=args.start, count_frames=args.count,
+        fps_badge_text=raw_fps_label, simulated=is_simulated, target_fps=75.0
+    )
+    video_records.append(rec)
+
+    # 2. Dark video + GT
+    rec = render_video_variant(
+        mode_id=f"2/12{'-sim' if is_simulated else ''}",
+        output_filename=str(out_dir / "02_dark_gt.mp4"),
+        stream_type="dark",
+        use_filtered_stream=False, show_blobs=False, show_pnp=False, show_ekf=False, show_gt=True,
+        show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+        video_path=args.dark_video, timestamps_path=args.dark_ts,
+        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+        dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
+        K=K, dist=dist, marker_pts_3d=marker_pts_3d, df_pnp=df_pnp,
+        start_frame=args.start, count_frames=args.count,
+        fps_badge_text=raw_fps_label, simulated=is_simulated, target_fps=75.0
+    )
+    video_records.append(rec)
+
+    # 3. Dark video + Filtration
+    rec = render_video_variant(
+        mode_id=f"3/12{'-sim' if is_simulated else ''}",
+        output_filename=str(out_dir / "03_dark_filtration.mp4"),
+        stream_type="dark",
+        use_filtered_stream=True, show_blobs=False, show_pnp=False, show_ekf=False, show_gt=False,
+        show_trails=False, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+        video_path=args.dark_video, timestamps_path=args.dark_ts,
+        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+        dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
+        K=K, dist=dist, marker_pts_3d=marker_pts_3d, df_pnp=df_pnp,
+        start_frame=args.start, count_frames=args.count,
+        fps_badge_text=raw_fps_label, simulated=is_simulated, target_fps=75.0
+    )
+    video_records.append(rec)
+
+    # 4. Dark video + Filtration + GT
+    rec = render_video_variant(
+        mode_id=f"4/12{'-sim' if is_simulated else ''}",
+        output_filename=str(out_dir / "04_dark_filtration_gt.mp4"),
+        stream_type="dark",
+        use_filtered_stream=True, show_blobs=False, show_pnp=False, show_ekf=False, show_gt=True,
+        show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+        video_path=args.dark_video, timestamps_path=args.dark_ts,
+        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+        dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
+        K=K, dist=dist, marker_pts_3d=marker_pts_3d, df_pnp=df_pnp,
+        start_frame=args.start, count_frames=args.count,
+        fps_badge_text=raw_fps_label, simulated=is_simulated, target_fps=75.0
+    )
+    video_records.append(rec)
+
+    # 5. Dark video + Blobs Detection
+    rec = render_video_variant(
+        mode_id=f"5/12{'-sim' if is_simulated else ''}",
+        output_filename=str(out_dir / "05_dark_blobs.mp4"),
+        stream_type="dark",
+        use_filtered_stream=True, show_blobs=True, show_pnp=False, show_ekf=False, show_gt=False,
+        show_trails=False, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+        video_path=args.dark_video, timestamps_path=args.dark_ts,
+        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+        dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
+        K=K, dist=dist, marker_pts_3d=marker_pts_3d, df_pnp=df_pnp,
+        start_frame=args.start, count_frames=args.count,
+        fps_badge_text=raw_fps_label, simulated=is_simulated, target_fps=75.0
+    )
+    video_records.append(rec)
+
+    # 6. Dark video + Blobs + GT
+    rec = render_video_variant(
+        mode_id=f"6/12{'-sim' if is_simulated else ''}",
+        output_filename=str(out_dir / "06_dark_blobs_gt.mp4"),
+        stream_type="dark",
+        use_filtered_stream=True, show_blobs=True, show_pnp=False, show_ekf=False, show_gt=True,
+        show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+        video_path=args.dark_video, timestamps_path=args.dark_ts,
+        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+        dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
+        K=K, dist=dist, marker_pts_3d=marker_pts_3d, df_pnp=df_pnp,
+        start_frame=args.start, count_frames=args.count,
+        fps_badge_text=raw_fps_label, simulated=is_simulated, target_fps=75.0
+    )
+    video_records.append(rec)
+
+    # 7. Dark video + Raw PnP
+    rec = render_video_variant(
+        mode_id=f"7/12{'-sim' if is_simulated else ''}",
+        output_filename=str(out_dir / "07_dark_pnp.mp4"),
+        stream_type="dark",
+        use_filtered_stream=True, show_blobs=False, show_pnp=True, show_ekf=False, show_gt=False,
+        show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+        video_path=args.dark_video, timestamps_path=args.dark_ts,
+        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+        dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
+        K=K, dist=dist, marker_pts_3d=marker_pts_3d, df_pnp=df_pnp,
+        start_frame=args.start, count_frames=args.count,
+        fps_badge_text=pnp_fps_label, simulated=is_simulated, target_fps=75.0
+    )
+    video_records.append(rec)
+
+    # 8. Dark video + Raw PnP + GT
+    rec = render_video_variant(
+        mode_id=f"8/12{'-sim' if is_simulated else ''}",
+        output_filename=str(out_dir / "08_dark_pnp_gt.mp4"),
+        stream_type="dark",
+        use_filtered_stream=True, show_blobs=False, show_pnp=True, show_ekf=False, show_gt=True,
+        show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+        video_path=args.dark_video, timestamps_path=args.dark_ts,
+        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+        dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
+        K=K, dist=dist, marker_pts_3d=marker_pts_3d, df_pnp=df_pnp,
+        start_frame=args.start, count_frames=args.count,
+        fps_badge_text=pnp_fps_label, simulated=is_simulated, target_fps=75.0
+    )
+    video_records.append(rec)
+
+    # 9. Dark video + EKF
+    rec = render_video_variant(
+        mode_id=f"9/12{'-sim' if is_simulated else ''}",
+        output_filename=str(out_dir / "09_dark_ekf.mp4"),
+        stream_type="dark",
+        use_filtered_stream=True, show_blobs=False, show_pnp=False, show_ekf=True, show_gt=False,
+        show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+        video_path=args.dark_video, timestamps_path=args.dark_ts,
+        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+        dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
+        K=K, dist=dist, marker_pts_3d=marker_pts_3d, df_pnp=df_pnp,
+        start_frame=args.start, count_frames=args.count,
+        fps_badge_text=pnp_fps_label, simulated=is_simulated, target_fps=75.0
+    )
+    video_records.append(rec)
+
+    # 10. Dark video + EKF + GT
+    rec = render_video_variant(
+        mode_id=f"10/12{'-sim' if is_simulated else ''}",
+        output_filename=str(out_dir / "10_dark_ekf_gt.mp4"),
+        stream_type="dark",
+        use_filtered_stream=True, show_blobs=False, show_pnp=False, show_ekf=True, show_gt=True,
+        show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+        video_path=args.dark_video, timestamps_path=args.dark_ts,
+        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+        dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
+        K=K, dist=dist, marker_pts_3d=marker_pts_3d, df_pnp=df_pnp,
+        start_frame=args.start, count_frames=args.count,
+        fps_badge_text=pnp_fps_label, simulated=is_simulated, target_fps=75.0
+    )
+    video_records.append(rec)
+
+    # 11. Bright video raw
+    rec = render_video_variant(
+        mode_id=f"11/12{'-sim' if is_simulated else ''}",
+        output_filename=str(out_dir / "11_bright_raw.mp4"),
+        stream_type="bright",
+        use_filtered_stream=False, show_blobs=False, show_pnp=False, show_ekf=False, show_gt=False,
+        show_trails=False, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+        video_path=args.bright_video, timestamps_path=args.bright_ts,
+        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+        dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
+        K=K, dist=dist, marker_pts_3d=marker_pts_3d, df_pnp=df_pnp,
+        start_frame=args.start, count_frames=args.count,
+        fps_badge_text=raw_fps_label, simulated=is_simulated, target_fps=75.0
+    )
+    video_records.append(rec)
+
+    # 12. Bright video + GT
+    rec = render_video_variant(
+        mode_id=f"12/12{'-sim' if is_simulated else ''}",
+        output_filename=str(out_dir / "12_bright_gt.mp4"),
+        stream_type="bright",
+        use_filtered_stream=False, show_blobs=False, show_pnp=False, show_ekf=False, show_gt=True,
+        show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+        video_path=args.bright_video, timestamps_path=args.bright_ts,
+        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+        dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
+        K=K, dist=dist, marker_pts_3d=marker_pts_3d, df_pnp=df_pnp,
+        start_frame=args.start, count_frames=args.count,
+        fps_badge_text=raw_fps_label, simulated=is_simulated, target_fps=75.0
+    )
+    video_records.append(rec)
+    return video_records
+
+
 def main():
     parser = argparse.ArgumentParser(description="Render synchronized tracking video combinations to a timestamped folder.")
     parser.add_argument("--dark-video", type=str, default=str(ROOT / "data" / "GT_videos" / "dataset_20260911_170556_290626" / "dataset_1000us_video_20260911_170556_290626.mkv"))
@@ -908,12 +1246,13 @@ def main():
     parser.add_argument("--calib", type=str, default=str(ROOT / "data" / "camera_calibration.yaml"))
     parser.add_argument("--geometry", type=str, default=str(ROOT / "data" / "geometry.yaml"))
     parser.add_argument("--alignment-json", type=str, default=str(ROOT / "data" / "alignment_calibration.json"))
-    parser.add_argument("--out-dir", type=str, default=None, help="Custom output folder path (defaults to a new data/renders/renders_YYYYMMDD_HHMMSS/ directory)")
+    parser.add_argument("--out-dir", type=str, default=None, help="Custom output folder path (defaults to a new data/renders/geometry-based/renders_YYYYMMDD_HHMMSS/ directory)")
     parser.add_argument("--start", type=int, default=0, help="Start frame index")
     parser.add_argument("--count", type=int, default=None, help="Number of frames to render (default: all)")
     parser.add_argument("--no-trails", action="store_true", help="Disable fading 3D trajectory trails")
-    parser.add_argument("--trail-length", type=int, default=35, help="Length of fading trajectory trail in frames")
+    parser.add_argument("--trail-length", type=int, default=75, help="Length of fading trajectory trail in frames (default: 75 points, spanning ~1s at 75 FPS)")
     parser.add_argument("--trail-thickness", type=int, default=3, help="Line thickness for 3D trajectory trails (default: 3)")
+    parser.add_argument("--no-simulated", action="store_true", help="Skip rendering simulated FPS variant subdirectory")
 
     # EKF Hyperparameter Tuning Flags
     parser.add_argument("--ekf-enable-gating", action="store_true", help="Enable strict Chi-Square NIS outlier rejection (disabled by default to prevent dropping valid motion frames)")
@@ -1014,194 +1353,27 @@ def main():
         )
 
     show_trails = not args.no_trails
-    video_records = []
 
-    # 1. Dark video raw
-    rec = render_video_variant(
-        mode_id="1/12",
-        output_filename=str(out_dir / "01_dark_raw.mp4"),
-        stream_type="dark",
-        use_filtered_stream=False, show_blobs=False, show_pnp=False, show_ekf=False, show_gt=False,
-        show_trails=False, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-        video_path=args.dark_video, timestamps_path=args.dark_ts,
-        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-        dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
-        K=K, dist=dist, marker_pts_3d=marker_pts_3d, df_pnp=df_pnp,
-        start_frame=args.start, count_frames=args.count
+    # 1. Render Standard Full-Rate Dataset
+    print("\n>>> [1/2] Rendering Standard Full-Rate Dataset...")
+    standard_records = render_all_geom_variants(
+        out_dir=out_dir,
+        is_simulated=False,
+        args=args,
+        calib_data=calib_data,
+        R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
+        K=K, dist=dist, marker_pts_3d=marker_pts_3d,
+        df_gt=df_gt, t_gt_all=t_gt_all, gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs,
+        df_pnp=df_pnp,
+        dt_sync=dt_sync
     )
-    video_records.append(rec)
 
-    # 2. Dark video + GT
-    rec = render_video_variant(
-        mode_id="2/12",
-        output_filename=str(out_dir / "02_dark_gt.mp4"),
-        stream_type="dark",
-        use_filtered_stream=False, show_blobs=False, show_pnp=False, show_ekf=False, show_gt=True,
-        show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-        video_path=args.dark_video, timestamps_path=args.dark_ts,
-        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-        dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
-        K=K, dist=dist, marker_pts_3d=marker_pts_3d, df_pnp=df_pnp,
-        start_frame=args.start, count_frames=args.count
-    )
-    video_records.append(rec)
-
-    # 3. Dark video + Filtration (Noise eliminated, pure isolated LEDs, NO markers)
-    rec = render_video_variant(
-        mode_id="3/12",
-        output_filename=str(out_dir / "03_dark_filtration.mp4"),
-        stream_type="dark",
-        use_filtered_stream=True, show_blobs=False, show_pnp=False, show_ekf=False, show_gt=False,
-        show_trails=False, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-        video_path=args.dark_video, timestamps_path=args.dark_ts,
-        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-        dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
-        K=K, dist=dist, marker_pts_3d=marker_pts_3d, df_pnp=df_pnp,
-        start_frame=args.start, count_frames=args.count
-    )
-    video_records.append(rec)
-
-    # 4. Dark video + Filtration + GT (Filtered video + GT 3D pose, NO 2D blob rings)
-    rec = render_video_variant(
-        mode_id="4/12",
-        output_filename=str(out_dir / "04_dark_filtration_gt.mp4"),
-        stream_type="dark",
-        use_filtered_stream=True, show_blobs=False, show_pnp=False, show_ekf=False, show_gt=True,
-        show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-        video_path=args.dark_video, timestamps_path=args.dark_ts,
-        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-        dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
-        K=K, dist=dist, marker_pts_3d=marker_pts_3d, df_pnp=df_pnp,
-        start_frame=args.start, count_frames=args.count
-    )
-    video_records.append(rec)
-
-    # 5. Dark video + Blobs Detection (Blobs/markers appear ON TOP of filtered video)
-    rec = render_video_variant(
-        mode_id="5/12",
-        output_filename=str(out_dir / "05_dark_blobs.mp4"),
-        stream_type="dark",
-        use_filtered_stream=True, show_blobs=True, show_pnp=False, show_ekf=False, show_gt=False,
-        show_trails=False, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-        video_path=args.dark_video, timestamps_path=args.dark_ts,
-        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-        dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
-        K=K, dist=dist, marker_pts_3d=marker_pts_3d, df_pnp=df_pnp,
-        start_frame=args.start, count_frames=args.count
-    )
-    video_records.append(rec)
-
-    # 6. Dark video + Blobs + GT
-    rec = render_video_variant(
-        mode_id="6/12",
-        output_filename=str(out_dir / "06_dark_blobs_gt.mp4"),
-        stream_type="dark",
-        use_filtered_stream=True, show_blobs=True, show_pnp=False, show_ekf=False, show_gt=True,
-        show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-        video_path=args.dark_video, timestamps_path=args.dark_ts,
-        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-        dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
-        K=K, dist=dist, marker_pts_3d=marker_pts_3d, df_pnp=df_pnp,
-        start_frame=args.start, count_frames=args.count
-    )
-    video_records.append(rec)
-
-    # 7. Dark video + Raw PnP (Filtered video backdrop + PnP 3D pose)
-    rec = render_video_variant(
-        mode_id="7/12",
-        output_filename=str(out_dir / "07_dark_pnp.mp4"),
-        stream_type="dark",
-        use_filtered_stream=True, show_blobs=False, show_pnp=True, show_ekf=False, show_gt=False,
-        show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-        video_path=args.dark_video, timestamps_path=args.dark_ts,
-        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-        dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
-        K=K, dist=dist, marker_pts_3d=marker_pts_3d, df_pnp=df_pnp,
-        start_frame=args.start, count_frames=args.count
-    )
-    video_records.append(rec)
-
-    # 8. Dark video + Raw PnP + GT
-    rec = render_video_variant(
-        mode_id="8/12",
-        output_filename=str(out_dir / "08_dark_pnp_gt.mp4"),
-        stream_type="dark",
-        use_filtered_stream=True, show_blobs=False, show_pnp=True, show_ekf=False, show_gt=True,
-        show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-        video_path=args.dark_video, timestamps_path=args.dark_ts,
-        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-        dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
-        K=K, dist=dist, marker_pts_3d=marker_pts_3d, df_pnp=df_pnp,
-        start_frame=args.start, count_frames=args.count
-    )
-    video_records.append(rec)
-
-    # 9. Dark video + EKF (Filtered video backdrop + EKF 3D pose)
-    rec = render_video_variant(
-        mode_id="9/12",
-        output_filename=str(out_dir / "09_dark_ekf.mp4"),
-        stream_type="dark",
-        use_filtered_stream=True, show_blobs=False, show_pnp=False, show_ekf=True, show_gt=False,
-        show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-        video_path=args.dark_video, timestamps_path=args.dark_ts,
-        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-        dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
-        K=K, dist=dist, marker_pts_3d=marker_pts_3d, df_pnp=df_pnp,
-        start_frame=args.start, count_frames=args.count
-    )
-    video_records.append(rec)
-
-    # 10. Dark video + EKF + GT
-    rec = render_video_variant(
-        mode_id="10/12",
-        output_filename=str(out_dir / "10_dark_ekf_gt.mp4"),
-        stream_type="dark",
-        use_filtered_stream=True, show_blobs=False, show_pnp=False, show_ekf=True, show_gt=True,
-        show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-        video_path=args.dark_video, timestamps_path=args.dark_ts,
-        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-        dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
-        K=K, dist=dist, marker_pts_3d=marker_pts_3d, df_pnp=df_pnp,
-        start_frame=args.start, count_frames=args.count
-    )
-    video_records.append(rec)
-
-    # 11. Bright video raw
-    rec = render_video_variant(
-        mode_id="11/12",
-        output_filename=str(out_dir / "11_bright_raw.mp4"),
-        stream_type="bright",
-        use_filtered_stream=False, show_blobs=False, show_pnp=False, show_ekf=False, show_gt=False,
-        show_trails=False, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-        video_path=args.bright_video, timestamps_path=args.bright_ts,
-        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-        dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
-        K=K, dist=dist, marker_pts_3d=marker_pts_3d, df_pnp=df_pnp,
-        start_frame=args.start, count_frames=args.count
-    )
-    video_records.append(rec)
-
-    # 12. Bright video + GT
-    rec = render_video_variant(
-        mode_id="12/12",
-        output_filename=str(out_dir / "12_bright_gt.mp4"),
-        stream_type="bright",
-        use_filtered_stream=False, show_blobs=False, show_pnp=False, show_ekf=False, show_gt=True,
-        show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-        video_path=args.bright_video, timestamps_path=args.bright_ts,
-        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-        dt_sync=dt_sync, R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
-        K=K, dist=dist, marker_pts_3d=marker_pts_3d, df_pnp=df_pnp,
-        start_frame=args.start, count_frames=args.count
-    )
-    video_records.append(rec)
-
-    # Generate Markdown Documentation
+    # Generate Markdown Documentation for Standard dataset
     generate_metadata_markdown(
         out_dir=out_dir,
         timestamp_str=timestamp_str,
         calib_data=calib_data,
-        video_records=video_records,
+        video_records=standard_records,
         start_frame=args.start,
         count_frames=args.count,
         show_trails=show_trails,
@@ -1209,11 +1381,43 @@ def main():
         ekf_settings=ekf_settings
     )
 
+    # 2. Render Simulated FPS Dataset (75 FPS PnP Emulation on Pi 4B)
+    if not args.no_simulated:
+        simulated_dir = out_dir / "simulated"
+        simulated_dir.mkdir(parents=True, exist_ok=True)
+        print(f"\n>>> [2/2] Rendering Simulated Raspberry Pi 4B Dataset -> {simulated_dir.resolve()}...")
+        simulated_records = render_all_geom_variants(
+            out_dir=simulated_dir,
+            is_simulated=True,
+            args=args,
+            calib_data=calib_data,
+            R_X=R_X, t_X=t_X, R_Y=R_Y, t_Y=t_Y,
+            K=K, dist=dist, marker_pts_3d=marker_pts_3d,
+            df_gt=df_gt, t_gt_all=t_gt_all, gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs,
+            df_pnp=df_pnp,
+            dt_sync=dt_sync
+        )
+
+        generate_metadata_markdown(
+            out_dir=simulated_dir,
+            timestamp_str=timestamp_str,
+            calib_data=calib_data,
+            video_records=simulated_records,
+            start_frame=args.start,
+            count_frames=args.count,
+            show_trails=show_trails,
+            trail_length=args.trail_length,
+            ekf_settings=ekf_settings
+        )
+
     print(f"\n=======================================================")
-    print(f"All 12 video combinations successfully rendered to:")
-    print(f"  {out_dir.resolve()}")
+    print(f"Geometry-Based renders successfully completed:")
+    print(f"  Standard Directory  : {out_dir.resolve()}")
+    if not args.no_simulated:
+        print(f"  Simulated Directory : {(out_dir / 'simulated').resolve()}")
     print(f"=======================================================\n")
 
 
 if __name__ == "__main__":
     main()
+

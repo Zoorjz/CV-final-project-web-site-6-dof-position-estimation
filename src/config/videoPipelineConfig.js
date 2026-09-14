@@ -223,32 +223,46 @@ export const PIPELINE_CONFIG = {
 };
 
 /**
- * Resolves the absolute video URL given a stage object and showGT boolean flag.
+ * Resolves the absolute video URL given a stage object, showGT boolean flag, and optional isSimulated flag.
  */
-export function resolveVideoUrl(stage, showGT) {
+export function resolveVideoUrl(stage, showGT, isSimulated = false) {
   if (!stage || !stage.files) return "";
-  const filename = showGT ? (stage.files.gt || stage.files.raw) : stage.files.raw;
+  let filename = showGT ? (stage.files.gt || stage.files.raw) : stage.files.raw;
+  if (!filename) return "";
+  
+  if (isSimulated) {
+    const parts = filename.split("/");
+    if (parts.length === 2) {
+      filename = `${parts[0]}/simulated/${parts[1]}`;
+    } else {
+      filename = `simulated/${filename}`;
+    }
+  }
+  
   return `${VIDEO_DATASET_BASE}/${filename}`;
 }
 
 /**
- * Collects all unique video URLs used in all pipelines for preloading.
+ * Collects all unique video URLs used in all pipelines for preloading (both standard and simulated).
  */
 export function getAllPipelineVideoUrls() {
   const urls = new Set();
   
+  const addStageUrls = (stage) => {
+    [false, true].forEach(showGT => {
+      [false, true].forEach(isSim => {
+        const url = resolveVideoUrl(stage, showGT, isSim);
+        if (url) urls.add(url);
+      });
+    });
+  };
+
   // 3D Pipeline
-  PIPELINE_CONFIG.pnp3d.stages.forEach(stage => {
-    if (stage.files.raw) urls.add(`${VIDEO_DATASET_BASE}/${stage.files.raw}`);
-    if (stage.files.gt) urls.add(`${VIDEO_DATASET_BASE}/${stage.files.gt}`);
-  });
+  PIPELINE_CONFIG.pnp3d.stages.forEach(addStageUrls);
 
   // Data Driven Modes
   Object.values(PIPELINE_CONFIG.dataDriven.modes).forEach(mode => {
-    mode.stages.forEach(stage => {
-      if (stage.files.raw) urls.add(`${VIDEO_DATASET_BASE}/${stage.files.raw}`);
-      if (stage.files.gt) urls.add(`${VIDEO_DATASET_BASE}/${stage.files.gt}`);
-    });
+    mode.stages.forEach(addStageUrls);
   });
 
   return Array.from(urls);

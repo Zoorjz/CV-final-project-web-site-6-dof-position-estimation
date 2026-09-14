@@ -160,6 +160,59 @@ def draw_trail_legend(
         cv2.putText(vis, label, (text_x, text_y), font, font_scale, (240, 240, 240), font_thickness, cv2.LINE_AA)
 
 
+def draw_fps_badge(
+    vis: np.ndarray,
+    fps_text: str,
+    status_color: tuple[int, int, int] = (0, 255, 150),
+    margin_left: int = 14,
+    margin_bottom: int = 14
+) -> None:
+    """Draws a prominent, high-contrast HUD FPS counter in the bottom-left corner."""
+    if not fps_text:
+        return
+
+    font = cv2.FONT_HERSHEY_DUPLEX
+    font_scale = 0.70
+    font_thickness = 2
+
+    (tw, th), baseline = cv2.getTextSize(fps_text, font, font_scale, font_thickness)
+    dot_radius = 4
+    dot_spacing = 8
+    pad_x = 12
+    pad_y = 7
+
+    box_w = pad_x * 2 + dot_radius * 2 + dot_spacing + tw
+    box_h = pad_y * 2 + th
+
+    h, w = vis.shape[:2]
+    x1 = margin_left
+    y2 = h - margin_bottom
+    y1 = y2 - box_h
+    x2 = x1 + box_w
+
+    if x2 > w or y1 < 0:
+        return
+
+    overlay = vis.copy()
+    # Dark modern HUD background
+    cv2.rectangle(overlay, (x1, y1), (x2, y2), (15, 23, 42), -1)
+    # Subtle border
+    cv2.rectangle(overlay, (x1, y1), (x2, y2), (70, 80, 95), 1, cv2.LINE_AA)
+    cv2.addWeighted(overlay, 0.85, vis, 0.15, 0, vis)
+
+    # Status indicator dot
+    dot_cx = x1 + pad_x + dot_radius
+    dot_cy = y1 + box_h // 2
+    cv2.circle(vis, (dot_cx, dot_cy), dot_radius, status_color, -1, cv2.LINE_AA)
+    cv2.circle(vis, (dot_cx, dot_cy), dot_radius + 2, status_color, 1, cv2.LINE_AA)
+
+    # FPS Text
+    text_x = dot_cx + dot_radius + dot_spacing
+    text_y = y1 + pad_y + th
+    cv2.putText(vis, fps_text, (text_x, text_y), font, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
+
+
+
 # ---------------------------------------------------------------------------
 # Pre-filtration & Optical Blob Detection Pipeline
 # ---------------------------------------------------------------------------
@@ -396,9 +449,12 @@ def render_video_variant(
     K: np.ndarray,
     dist: np.ndarray,
     start_frame: int = 0,
-    count_frames: int | None = None
+    count_frames: int | None = None,
+    fps_badge_text: str | None = None,
+    simulated: bool = False,
+    target_fps: float = 36.0
 ) -> dict:
-    """Renders a single video variant with the specified visual layers and web-ready encoding."""
+    """Renders a single video variant with the specified visual layers, FPS emulation, and web-ready encoding."""
     df_ts = pd.read_csv(timestamps_path) if Path(timestamps_path).exists() else None
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -418,9 +474,23 @@ def render_video_variant(
     end_frame = total_in_frames if count_frames is None else min(start_frame + count_frames, total_in_frames)
     frames_to_process = end_frame - start_frame
 
+    # Auto-resolve FPS badge text if not explicitly provided
+    if fps_badge_text is None:
+        if simulated:
+            if model_type in ["cnn_raw", "cnn_kf"]:
+                fps_badge_text = f"{target_fps:.1f} FPS"
+            elif model_type in ["ml_raw", "ml_kf"]:
+                fps_badge_text = f"{target_fps:.1f} FPS"
+            elif show_blobs:
+                fps_badge_text = f"{target_fps:.1f} FPS"
+            else:
+                fps_badge_text = "75.0 FPS"
+        else:
+            fps_badge_text = "75.0 FPS"
+
     print(f"\n[Render {stage_id}] -> {Path(output_filename).name}")
     print(f"  Stream: {stream_type.upper()} ({width}x{height} @ {calculated_fps:.2f} fps) | Frames: {start_frame}..{end_frame-1} ({frames_to_process} frames)")
-    print(f"  Layers: FilteredBase={use_filtered_stream}, Blobs={show_blobs}, Model={model_type}, GT={show_gt}, Trails={show_trails}")
+    print(f"  Layers: FilteredBase={use_filtered_stream}, Blobs={show_blobs}, Model={model_type}, GT={show_gt}, Trails={show_trails}, FPS_HUD='{fps_badge_text}'")
 
     Path(output_filename).parent.mkdir(parents=True, exist_ok=True)
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -448,6 +518,12 @@ def render_video_variant(
         if show_gt:
             legend_items.append(("Ground Truth", COLOR_PALETTE["gt"]["trail"]))
 
+    # For simulated tracking rate below camera FPS (if applicable)
+    last_model_update_time = -1.0
+    held_model_pose = None
+    prev_t_video = None
+    prev_model_raw = None
+
     for idx, f_idx in enumerate(range(start_frame, end_frame)):
         ret, frame = cap.read()
         if not ret:
@@ -457,9 +533,11 @@ def render_video_variant(
         t_gt = t_video + dt_sync_gt
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        detected_pts, areas, bw_clean, bw_blobs = filter_and_detect_blobs(gray, is_dark=is_dark)
+        detected_pts, areas, bw_clean, bw_blobs = np.empty((0, 2)), np.empty((0,)), np.zeros_like(gray), np.zeros_like(gray)
+        if use_filtered_stream or show_blobs:
+            detected_pts, areas, bw_clean, bw_blobs = filter_and_detect_blobs(gray, is_dark=is_dark)
 
-        # 1. Base visual layer: Filtered optical stream vs raw footage
+        # Base visual layer: Filtered optical stream vs raw footage
         if use_filtered_stream:
             filtered_spots = cv2.bitwise_and(frame, frame, mask=bw_blobs)
             mask_glow = cv2.cvtColor(bw_blobs, cv2.COLOR_GRAY2BGR)
@@ -490,15 +568,51 @@ def render_video_variant(
                         cv2.circle(vis, (px, py), 8, (0, 0, 255), 2, cv2.LINE_AA)
                         cv2.circle(vis, (px, py), 2, (0, 0, 255), -1, cv2.LINE_AA)
 
-        # 3. Model 6-DoF Pose Layer
-        if model_type is not None and df_model_cam is not None and f_idx < len(df_model_cam):
-            is_valid = bool(df_model_cam['valid'].iloc[f_idx]) if 'valid' in df_model_cam.columns else True
-            if is_valid:
-                row = df_model_cam.iloc[f_idx]
-                tvec_mm = np.array([[row['cam_tx_mm']], [row['cam_ty_mm']], [row['cam_tz_mm']]], dtype=np.float64)
-                q_mod = np.array([row['cam_qx'], row['cam_qy'], row['cam_qz'], row['cam_qw']], dtype=np.float64)
-                R_mod_cam = R_scipy.from_quat(q_mod).as_matrix()
+        # 3. Model 6-DoF Pose Layer (with Realistic FPS Emulation)
+        if model_type is not None and df_model_cam is not None:
+            should_update_model = True
+            if simulated and target_fps < calculated_fps:
+                if last_model_update_time < 0 or (t_video - last_model_update_time) >= (1.0 / target_fps - 1e-4):
+                    should_update_model = True
+                    last_model_update_time = t_video
+                else:
+                    should_update_model = False
 
+            if should_update_model:
+                if f_idx < len(df_model_cam):
+                    is_valid = bool(df_model_cam['valid'].iloc[f_idx]) if 'valid' in df_model_cam.columns else True
+                    if is_valid:
+                        row = df_model_cam.iloc[f_idx]
+                        tvec_mm = np.array([[row['cam_tx_mm']], [row['cam_ty_mm']], [row['cam_tz_mm']]], dtype=np.float64)
+                        q_mod = np.array([row['cam_qx'], row['cam_qy'], row['cam_qz'], row['cam_qw']], dtype=np.float64)
+                        R_mod_cam = R_scipy.from_quat(q_mod).as_matrix()
+                        held_model_pose = (R_mod_cam, tvec_mm)
+
+                        if show_trails:
+                            # Sub-frame 75 FPS intermediate interpolation in non-simulated mode
+                            if not simulated and prev_model_raw is not None:
+                                prev_R, prev_tvec, prev_q = prev_model_raw
+                                tvec_mid = (prev_tvec + tvec_mm) / 2.0
+                                q_mid = prev_q + q_mod
+                                q_mid /= np.linalg.norm(q_mid)
+                                R_mid = R_scipy.from_quat(q_mid).as_matrix()
+                                rvec_mid, _ = cv2.Rodrigues(R_mid)
+                                proj_mid, _ = cv2.projectPoints(np.zeros((1, 3)), rvec_mid, tvec_mid, K, dist)
+                                model_trail.append(tuple(proj_mid.reshape(-1, 2)[0].astype(int)))
+
+                            rvec_mod, _ = cv2.Rodrigues(R_mod_cam)
+                            proj_mod_origin, _ = cv2.projectPoints(np.zeros((1, 3)), rvec_mod, tvec_mm, K, dist)
+                            pt = tuple(proj_mod_origin.reshape(-1, 2)[0].astype(int))
+                            model_trail.append(pt)
+                            prev_model_raw = (R_mod_cam, tvec_mm, q_mod)
+                    else:
+                        held_model_pose = None
+                        prev_model_raw = None
+                        if show_trails:
+                            model_trail.append(None)
+
+            if held_model_pose is not None:
+                R_mod_cam, tvec_mm = held_model_pose
                 p_cfg = COLOR_PALETTE.get(model_type, COLOR_PALETTE["cnn_raw"])
                 draw_3d_axes_clean(
                     vis, R_mod_cam, tvec_mm, K, dist,
@@ -506,19 +620,26 @@ def render_video_variant(
                     colors=p_cfg["axes"]
                 )
 
-                if show_trails:
-                    rvec_mod, _ = cv2.Rodrigues(R_mod_cam)
-                    proj_mod_origin, _ = cv2.projectPoints(np.zeros((1, 3)), rvec_mod, tvec_mm, K, dist)
-                    pt = tuple(proj_mod_origin.reshape(-1, 2)[0].astype(int))
-                    model_trail.append(pt)
-            else:
-                if show_trails:
-                    model_trail.append(None)
-
-        # 4. Ground Truth 3D Pose Layer (Using accurate camera-to-VR calibration)
+        # 4. Ground Truth 3D Pose Layer (Continuous 75 FPS real-life reference)
         if show_gt and gt_pos_rhs is not None and t_gt_all is not None:
             gt_in_bounds = (t_gt >= t_gt_all[0]) and (t_gt <= t_gt_all[-1])
             if gt_in_bounds:
+                # Sub-frame 75 FPS intermediate point from high-rate VR tracker
+                if show_trails and prev_t_video is not None:
+                    t_mid = (prev_t_video + t_video) / 2.0
+                    t_gt_mid = t_mid + dt_sync_gt
+                    if t_gt_all[0] <= t_gt_mid <= t_gt_all[-1]:
+                        p_gt_mid = np.array([np.interp(t_gt_mid, t_gt_all, gt_pos_rhs[:, d]) for d in range(3)])
+                        q_gt_mid = np.array([np.interp(t_gt_mid, t_gt_all, gt_quats_rhs[:, d]) for d in range(4)])
+                        q_gt_mid /= np.linalg.norm(q_gt_mid)
+                        R_gt_mid = R_scipy.from_quat(q_gt_mid).as_matrix()
+                        R_gt_cam_mid = R_X_gt @ R_gt_mid @ R_Y_gt
+                        p_gt_cam_mid = R_X_gt @ (R_gt_mid @ t_Y_gt + p_gt_mid) + t_X_gt
+                        tvec_gt_cam_mm_mid = (p_gt_cam_mid * 1000.0).reshape(3, 1)
+                        rvec_gt_mid, _ = cv2.Rodrigues(R_gt_cam_mid)
+                        proj_mid, _ = cv2.projectPoints(np.zeros((1, 3)), rvec_gt_mid, tvec_gt_cam_mm_mid, K, dist)
+                        gt_trail.append(tuple(proj_mid.reshape(-1, 2)[0].astype(int)))
+
                 p_gt_vr = np.array([np.interp(t_gt, t_gt_all, gt_pos_rhs[:, d]) for d in range(3)])
                 q_gt_vr = np.array([np.interp(t_gt, t_gt_all, gt_quats_rhs[:, d]) for d in range(4)])
                 q_gt_vr /= np.linalg.norm(q_gt_vr)
@@ -544,11 +665,13 @@ def render_video_variant(
                 if show_trails:
                     gt_trail.append(None)
 
+        prev_t_video = t_video
+
         # 5. Fading 3D Trajectory Trails
         if show_trails:
-            if len(model_trail) > trail_length:
+            while len(model_trail) > trail_length:
                 model_trail.pop(0)
-            if len(gt_trail) > trail_length:
+            while len(gt_trail) > trail_length:
                 gt_trail.pop(0)
 
             # Model Trail (Violet for CNN, Amber Gold for ML)
@@ -565,7 +688,7 @@ def render_video_variant(
                             if tr_i == len(model_trail) - 1:
                                 cv2.circle(vis, p2, 4, col_base, -1, cv2.LINE_AA)
 
-            # GT Trail (Magenta)
+            # GT Trail (Bright Green)
             col_gt = COLOR_PALETTE["gt"]["trail"]
             for tr_i in range(1, len(gt_trail)):
                 alpha = 0.30 + 0.70 * (tr_i / float(trail_length))
@@ -579,6 +702,15 @@ def render_video_variant(
 
             if legend_items:
                 draw_trail_legend(vis, legend_items)
+
+        # Draw Prominent HUD FPS Counter on Bottom-Left Corner
+        if model_type in ["cnn_raw", "cnn_kf"]:
+            badge_color = (230, 80, 180)  # Lavender/Violet
+        elif model_type in ["ml_raw", "ml_kf"] or show_blobs:
+            badge_color = (0, 215, 255)   # Canary Gold/Amber
+        else:
+            badge_color = (0, 255, 150)   # Emerald Green
+        draw_fps_badge(vis, fps_text=fps_badge_text, status_color=badge_color)
 
         writer.write(vis)
 
@@ -620,6 +752,7 @@ def render_video_variant(
         },
         "frames": frames_to_process,
         "fps": calculated_fps,
+        "fps_badge": fps_badge_text,
         "duration_s": frames_to_process / calculated_fps
     }
 
@@ -640,7 +773,7 @@ def generate_metadata_markdown(
     trail_length: int,
     kf_settings: dict
 ):
-    """Generates the comprehensive README.md documentation file inside the timestamped directory."""
+    """Generates the comprehensive README.md documentation file inside the output directory."""
     dt_sync = calib_gt["time_offset_seconds"]
     cam_trans = calib_gt["camera_to_vr_extrinsics"]["translation_m"]
     cam_euler = calib_gt["camera_to_vr_extrinsics"]["rotation_euler_deg"]
@@ -660,7 +793,7 @@ def generate_metadata_markdown(
 * **Start Frame**: `{start_frame}`
 * **Frame Count**: `{count_frames if count_frames is not None else 'All Frames'}`
 * **Trails Enabled**: `{show_trails}` (Length: `{trail_length}` frames)
-* **Text / HUD Overlay**: `Disabled (Clean Academic Visuals)`
+* **HUD Overlay**: `Bottom-Left FPS Badge & Bottom-Right Legend`
 
 ### Calibration & Alignment Parameters
 * **Time Synchronization Offset ($\\Delta t$)**: `+{dt_sync:.4f} s` ($t_{{\\text{{GT}}}} = t_{{\\text{{video}}}} + {dt_sync:.4f}\\text{{ s}}$)
@@ -673,18 +806,18 @@ def generate_metadata_markdown(
 
 ### Pipeline Architectures
 
-#### A. CNN Pipeline (Direct Deep Neural Pose Estimation)
+#### A. CNN Pipeline (Direct Deep Neural Pose Estimation @ 5 FPS)
 1. **Ambient Visual Context (10,000 µs)**: 10,000 µs full-frame ambient illumination capturing the tracking environment.
 2. **Short-Shutter Tensor Input (1,000 µs)**: 1,000 µs high-contrast dark IR frame passed directly to convolutional layers.
-3. **CNN Direct 6-DoF Pose**: Temporal-3 ResNet regressing rigid body pose $[\\mathbf{{t}}, \\mathbf{{q}}]$ directly without explicit 2D blob extraction (demonstrates raw neural inference jitter).
-4. **CNN + Kalman Filter**: Causal 6-DoF state estimator (kinematic CV position + $\\mathrm{{SO}}(3)$ geodesic orientation filter) suppressing neural jitter.
+3. **CNN Direct 6-DoF Pose**: Temporal-3 ResNet regressing rigid body pose $[\\mathbf{{t}}, \\mathbf{{q}}]$ directly (5 FPS inference on Raspberry Pi 4B).
+4. **CNN + Kalman Filter**: Causal 6-DoF state estimator (kinematic CV position + $\\mathrm{{SO}}(3)$ geodesic orientation filter) smoothing 5 Hz neural predictions.
 
-#### B. ML Pipeline (Learned 2D-to-3D Feature Regressor)
+#### B. ML Pipeline (Learned 2D-to-3D Feature Regressor @ 25 FPS)
 1. **Ambient Visual Context (10,000 µs)**: 10,000 µs ambient visual stream.
 2. **Short-Shutter Tensor Input (1,000 µs)**: 1,000 µs short-shutter frame.
 3. **Optical Pre-Filtration**: Multi-stage $3\\times 3$ Gaussian smoothing, dynamic peak threshold ($T \\ge 180$), and morphological opening.
-4. **2D Blob Extraction**: Sub-pixel moments extracting 2D centroid coordinates and spatial features.
-5. **ML Regressor Output**: Trained Random Forest / MLP feature regression predicting 6-DoF pose (demonstrates raw regressor predictions).
+4. **2D Blob Extraction**: Sub-pixel moments extracting 2D centroid coordinates and spatial features (25 FPS on Pi 4B).
+5. **ML Regressor Output**: Trained Random Forest / MLP feature regression predicting 6-DoF pose (25 FPS on Pi 4B).
 6. **ML + Kalman Filter**: 6-DoF causal state estimator smoothing regression output.
 
 ### 6-DoF Kalman Filter Hyperparameters
@@ -696,8 +829,8 @@ def generate_metadata_markdown(
 
 ## 2. Generated Video Files Matrix
 
-| Filename | Shutter / Stream | Pipeline Stage & Visual Layers Included | Duration | Frame Count |
-| :--- | :--- | :--- | :--- | :--- |
+| Filename | Shutter / Stream | Pipeline Stage & Visual Layers Included | Duration | Frame Count | FPS HUD |
+| :--- | :--- | :--- | :--- | :--- | :--- |
 """
     for v in video_records:
         layers = v["layers"]
@@ -733,7 +866,7 @@ def generate_metadata_markdown(
 
         desc_str = " + ".join(desc_parts)
         shutter_str = "1000 µs (Dark IR)" if v["stream"] == "dark" else "10000 µs (Bright Visual)"
-        md_content += f"| `{v['filename']}` | {shutter_str} | {desc_str} | {v['duration_s']:.2f} s | {v['frames']} frames |\n"
+        md_content += f"| `{v['filename']}` | {shutter_str} | {desc_str} | {v['duration_s']:.2f} s | {v['frames']} frames | `{v.get('fps_badge', 'FPS')}` |\n"
 
     md_content += """
 ---
@@ -754,6 +887,275 @@ def generate_metadata_markdown(
     with open(readme_path, "w", encoding="utf-8") as f:
         f.write(md_content)
     print(f"\n[Settings] Saved settings and video descriptions to {readme_path}")
+
+
+def render_all_data_variants(
+    out_dir: Path,
+    is_simulated: bool,
+    args,
+    render_cnn: bool,
+    render_ml: bool,
+    df_cnn_raw_cam,
+    df_cnn_kf_cam,
+    df_ml_raw_cam,
+    df_ml_kf_cam,
+    gt_pos_rhs,
+    gt_quats_rhs,
+    t_gt_all,
+    dt_sync_gt,
+    R_X_gt, t_X_gt, R_Y_gt, t_Y_gt,
+    K, dist
+) -> list[dict]:
+    """Renders all requested data-driven video variants into the target output directory."""
+    show_trails = not args.no_trails
+    video_records = []
+
+    raw_fps_text = "75.0 FPS"
+    cnn_fps_text = "5.0 FPS" if is_simulated else "75.0 FPS"
+    ml_fps_text = "25.0 FPS" if is_simulated else "75.0 FPS"
+
+    # Base Videos (Shared): Bright Raw/GT and Dark Raw/GT
+    rec = render_video_variant(
+        stage_id=f"Bright-Raw{'-sim' if is_simulated else ''}",
+        output_filename=str(out_dir / "01_bright_raw.mp4"),
+        stream_type="bright",
+        use_filtered_stream=False, show_blobs=False, model_type=None, df_model_cam=None, show_gt=False,
+        show_trails=False, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+        video_path=args.bright_video, timestamps_path=args.bright_ts,
+        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+        dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
+        K=K, dist=dist, start_frame=args.start, count_frames=args.count,
+        fps_badge_text=raw_fps_text, simulated=is_simulated, target_fps=36.0
+    )
+    video_records.append(rec)
+
+    rec = render_video_variant(
+        stage_id=f"Bright-GT{'-sim' if is_simulated else ''}",
+        output_filename=str(out_dir / "02_bright_gt.mp4"),
+        stream_type="bright",
+        use_filtered_stream=False, show_blobs=False, model_type=None, df_model_cam=None, show_gt=True,
+        show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+        video_path=args.bright_video, timestamps_path=args.bright_ts,
+        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+        dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
+        K=K, dist=dist, start_frame=args.start, count_frames=args.count,
+        fps_badge_text=raw_fps_text, simulated=is_simulated, target_fps=36.0
+    )
+    video_records.append(rec)
+
+    rec = render_video_variant(
+        stage_id=f"Dark-Raw{'-sim' if is_simulated else ''}",
+        output_filename=str(out_dir / "03_dark_raw.mp4"),
+        stream_type="dark",
+        use_filtered_stream=False, show_blobs=False, model_type=None, df_model_cam=None, show_gt=False,
+        show_trails=False, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+        video_path=args.dark_video, timestamps_path=args.dark_ts,
+        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+        dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
+        K=K, dist=dist, start_frame=args.start, count_frames=args.count,
+        fps_badge_text=raw_fps_text, simulated=is_simulated, target_fps=36.0
+    )
+    video_records.append(rec)
+
+    rec = render_video_variant(
+        stage_id=f"Dark-GT{'-sim' if is_simulated else ''}",
+        output_filename=str(out_dir / "04_dark_gt.mp4"),
+        stream_type="dark",
+        use_filtered_stream=False, show_blobs=False, model_type=None, df_model_cam=None, show_gt=True,
+        show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+        video_path=args.dark_video, timestamps_path=args.dark_ts,
+        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+        dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
+        K=K, dist=dist, start_frame=args.start, count_frames=args.count,
+        fps_badge_text=raw_fps_text, simulated=is_simulated, target_fps=36.0
+    )
+    video_records.append(rec)
+
+    # CNN Pipeline Specific Stages
+    if render_cnn:
+        # 5. CNN Raw
+        rec = render_video_variant(
+            stage_id=f"CNN-Raw{'-sim' if is_simulated else ''}",
+            output_filename=str(out_dir / "05_cnn_raw.mp4"),
+            stream_type="dark",
+            use_filtered_stream=False, show_blobs=False, model_type="cnn_raw", df_model_cam=df_cnn_raw_cam, show_gt=False,
+            show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+            video_path=args.dark_video, timestamps_path=args.dark_ts,
+            gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+            dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
+            K=K, dist=dist, start_frame=args.start, count_frames=args.count,
+            fps_badge_text=cnn_fps_text, simulated=is_simulated, target_fps=5.0
+        )
+        video_records.append(rec)
+
+        # 6. CNN Raw + GT
+        rec = render_video_variant(
+            stage_id=f"CNN-Raw-GT{'-sim' if is_simulated else ''}",
+            output_filename=str(out_dir / "06_cnn_gt.mp4"),
+            stream_type="dark",
+            use_filtered_stream=False, show_blobs=False, model_type="cnn_raw", df_model_cam=df_cnn_raw_cam, show_gt=True,
+            show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+            video_path=args.dark_video, timestamps_path=args.dark_ts,
+            gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+            dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
+            K=K, dist=dist, start_frame=args.start, count_frames=args.count,
+            fps_badge_text=cnn_fps_text, simulated=is_simulated, target_fps=5.0
+        )
+        video_records.append(rec)
+
+        # 7. CNN + KF
+        rec = render_video_variant(
+            stage_id=f"CNN-KF-Raw{'-sim' if is_simulated else ''}",
+            output_filename=str(out_dir / "07_cnn_kf_raw.mp4"),
+            stream_type="dark",
+            use_filtered_stream=False, show_blobs=False, model_type="cnn_kf", df_model_cam=df_cnn_kf_cam, show_gt=False,
+            show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+            video_path=args.dark_video, timestamps_path=args.dark_ts,
+            gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+            dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
+            K=K, dist=dist, start_frame=args.start, count_frames=args.count,
+            fps_badge_text=cnn_fps_text, simulated=is_simulated, target_fps=5.0
+        )
+        video_records.append(rec)
+
+        # 8. CNN + KF + GT
+        rec = render_video_variant(
+            stage_id=f"CNN-KF-GT{'-sim' if is_simulated else ''}",
+            output_filename=str(out_dir / "08_cnn_kf_gt.mp4"),
+            stream_type="dark",
+            use_filtered_stream=False, show_blobs=False, model_type="cnn_kf", df_model_cam=df_cnn_kf_cam, show_gt=True,
+            show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+            video_path=args.dark_video, timestamps_path=args.dark_ts,
+            gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+            dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
+            K=K, dist=dist, start_frame=args.start, count_frames=args.count,
+            fps_badge_text=cnn_fps_text, simulated=is_simulated, target_fps=5.0
+        )
+        video_records.append(rec)
+
+    # ML Pipeline Specific Stages
+    if render_ml:
+        # 5b. Optical Filtration Raw
+        rec = render_video_variant(
+            stage_id=f"ML-Filtration-Raw{'-sim' if is_simulated else ''}",
+            output_filename=str(out_dir / "05_dark_filtration.mp4"),
+            stream_type="dark",
+            use_filtered_stream=True, show_blobs=False, model_type=None, df_model_cam=None, show_gt=False,
+            show_trails=False, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+            video_path=args.dark_video, timestamps_path=args.dark_ts,
+            gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+            dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
+            K=K, dist=dist, start_frame=args.start, count_frames=args.count,
+            fps_badge_text=raw_fps_text, simulated=is_simulated, target_fps=36.0
+        )
+        video_records.append(rec)
+
+        # 6b. Optical Filtration + GT
+        rec = render_video_variant(
+            stage_id=f"ML-Filtration-GT{'-sim' if is_simulated else ''}",
+            output_filename=str(out_dir / "06_dark_filtration_gt.mp4"),
+            stream_type="dark",
+            use_filtered_stream=True, show_blobs=False, model_type=None, df_model_cam=None, show_gt=True,
+            show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+            video_path=args.dark_video, timestamps_path=args.dark_ts,
+            gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+            dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
+            K=K, dist=dist, start_frame=args.start, count_frames=args.count,
+            fps_badge_text=raw_fps_text, simulated=is_simulated, target_fps=36.0
+        )
+        video_records.append(rec)
+
+        # 7b. Blob Detection Raw
+        rec = render_video_variant(
+            stage_id=f"ML-Blobs-Raw{'-sim' if is_simulated else ''}",
+            output_filename=str(out_dir / "07_dark_blobs.mp4"),
+            stream_type="dark",
+            use_filtered_stream=True, show_blobs=True, model_type=None, df_model_cam=None, show_gt=False,
+            show_trails=False, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+            video_path=args.dark_video, timestamps_path=args.dark_ts,
+            gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+            dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
+            K=K, dist=dist, start_frame=args.start, count_frames=args.count,
+            fps_badge_text=ml_fps_text, simulated=is_simulated, target_fps=25.0
+        )
+        video_records.append(rec)
+
+        # 8b. Blob Detection + GT
+        rec = render_video_variant(
+            stage_id=f"ML-Blobs-GT{'-sim' if is_simulated else ''}",
+            output_filename=str(out_dir / "08_dark_blobs_gt.mp4"),
+            stream_type="dark",
+            use_filtered_stream=True, show_blobs=True, model_type=None, df_model_cam=None, show_gt=True,
+            show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+            video_path=args.dark_video, timestamps_path=args.dark_ts,
+            gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+            dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
+            K=K, dist=dist, start_frame=args.start, count_frames=args.count,
+            fps_badge_text=ml_fps_text, simulated=is_simulated, target_fps=25.0
+        )
+        video_records.append(rec)
+
+        # 9b. ML Predictions Raw
+        rec = render_video_variant(
+            stage_id=f"ML-Raw{'-sim' if is_simulated else ''}",
+            output_filename=str(out_dir / "09_ml_raw.mp4"),
+            stream_type="dark",
+            use_filtered_stream=True, show_blobs=False, model_type="ml_raw", df_model_cam=df_ml_raw_cam, show_gt=False,
+            show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+            video_path=args.dark_video, timestamps_path=args.dark_ts,
+            gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+            dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
+            K=K, dist=dist, start_frame=args.start, count_frames=args.count,
+            fps_badge_text=ml_fps_text, simulated=is_simulated, target_fps=25.0
+        )
+        video_records.append(rec)
+
+        # 10b. ML Predictions + GT
+        rec = render_video_variant(
+            stage_id=f"ML-GT{'-sim' if is_simulated else ''}",
+            output_filename=str(out_dir / "10_ml_gt.mp4"),
+            stream_type="dark",
+            use_filtered_stream=True, show_blobs=False, model_type="ml_raw", df_model_cam=df_ml_raw_cam, show_gt=True,
+            show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+            video_path=args.dark_video, timestamps_path=args.dark_ts,
+            gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+            dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
+            K=K, dist=dist, start_frame=args.start, count_frames=args.count,
+            fps_badge_text=ml_fps_text, simulated=is_simulated, target_fps=25.0
+        )
+        video_records.append(rec)
+
+        # 11b. ML + KF
+        rec = render_video_variant(
+            stage_id=f"ML-KF-Raw{'-sim' if is_simulated else ''}",
+            output_filename=str(out_dir / "11_ml_kf_raw.mp4"),
+            stream_type="dark",
+            use_filtered_stream=True, show_blobs=False, model_type="ml_kf", df_model_cam=df_ml_kf_cam, show_gt=False,
+            show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+            video_path=args.dark_video, timestamps_path=args.dark_ts,
+            gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+            dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
+            K=K, dist=dist, start_frame=args.start, count_frames=args.count,
+            fps_badge_text=ml_fps_text, simulated=is_simulated, target_fps=25.0
+        )
+        video_records.append(rec)
+
+        # 12b. ML + KF + GT
+        rec = render_video_variant(
+            stage_id=f"ML-KF-GT{'-sim' if is_simulated else ''}",
+            output_filename=str(out_dir / "12_ml_kf_gt.mp4"),
+            stream_type="dark",
+            use_filtered_stream=True, show_blobs=False, model_type="ml_kf", df_model_cam=df_ml_kf_cam, show_gt=True,
+            show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
+            video_path=args.dark_video, timestamps_path=args.dark_ts,
+            gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
+            dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
+            K=K, dist=dist, start_frame=args.start, count_frames=args.count,
+            fps_badge_text=ml_fps_text, simulated=is_simulated, target_fps=25.0
+        )
+        video_records.append(rec)
+
+    return video_records
 
 
 # ---------------------------------------------------------------------------
@@ -778,8 +1180,9 @@ def main():
     parser.add_argument("--start", type=int, default=0, help="Start frame index")
     parser.add_argument("--count", type=int, default=None, help="Number of frames to render")
     parser.add_argument("--no-trails", action="store_true", help="Disable fading 3D trajectory trails")
-    parser.add_argument("--trail-length", type=int, default=35, help="Length of fading trajectory trail in frames")
+    parser.add_argument("--trail-length", type=int, default=75, help="Length of fading trajectory trail in frames (default: 75 points, spanning ~1s at 75 FPS)")
     parser.add_argument("--trail-thickness", type=int, default=3, help="Line thickness for 3D trajectory trails")
+    parser.add_argument("--no-simulated", action="store_true", help="Skip rendering simulated FPS variant subdirectory")
     parser.add_argument("--pos-noise", type=float, default=15.0, help="Kalman filter position measurement noise in mm")
     parser.add_argument("--accel-noise", type=float, default=500.0, help="Kalman filter process acceleration noise in mm/s^2")
     parser.add_argument("--rot-tau", type=float, default=0.06, help="Kalman filter rotation time constant in seconds")
@@ -801,7 +1204,7 @@ def main():
     K[:2, :] *= 0.5  # 1280x800 -> 640x400
     dist = np.array(cal["distortion_coefficients"], dtype=np.float64)
 
-    # 3. Load Ground Truth Calibration (exact same as render_aligned_video.py)
+    # 3. Load Ground Truth Calibration
     with open(args.gt_calib) as f:
         calib_gt = json.load(f)
     dt_sync_gt = calib_gt["time_offset_seconds"]
@@ -810,7 +1213,7 @@ def main():
     R_Y_gt = np.array(calib_gt["controller_to_bar_extrinsics"]["rotation_matrix"], dtype=np.float64)
     t_Y_gt = np.array(calib_gt["controller_to_bar_extrinsics"]["translation_m"], dtype=np.float64)
 
-    # 4. Load CNN Model Extrinsics (from cnn_alignment_calibration.json)
+    # 4. Load CNN Model Extrinsics
     with open(args.cnn_calib) as f:
         calib_cnn = json.load(f)
     R_X_cnn = np.array(calib_cnn["camera_to_vr_extrinsics"]["rotation_matrix"], dtype=np.float64)
@@ -818,7 +1221,7 @@ def main():
     R_Y_cnn = np.array(calib_cnn["controller_to_bar_extrinsics"]["rotation_matrix"], dtype=np.float64)
     t_Y_cnn = np.array(calib_cnn["controller_to_bar_extrinsics"]["translation_m"], dtype=np.float64)
 
-    # 5. Load ML Model Extrinsics (from ml_alignment_calibration.json)
+    # 5. Load ML Model Extrinsics
     with open(args.ml_calib) as f:
         calib_ml = json.load(f)
     R_X_ml = np.array(calib_ml["camera_to_vr_extrinsics"]["rotation_matrix"], dtype=np.float64)
@@ -845,279 +1248,58 @@ def main():
         if np.dot(gt_quats_rhs[i], gt_quats_rhs[i-1]) < 0:
             gt_quats_rhs[i] = -gt_quats_rhs[i]
 
-    # 7. Process CNN Trajectories (Raw vs Kalman Filtered)
+    # 7. Process CNN Trajectories
     df_cnn_raw_cam = None
     df_cnn_kf_cam = None
     if Path(args.cnn_raw_csv).exists():
         df_cnn_raw_source = pd.read_csv(args.cnn_raw_csv)
-        # Transform raw un-smoothed predictions
         df_cnn_raw_cam = transform_model_to_cam(df_cnn_raw_source, R_X_cnn, t_X_cnn, R_Y_cnn, t_Y_cnn)
-        # Apply 6-DoF Kalman filter and then transform
         df_cnn_kf_source = apply_kalman_filter_to_trajectory(
             df_cnn_raw_source, pos_noise_mm=args.pos_noise, accel_noise_mm=args.accel_noise, rot_tau_s=args.rot_tau
         )
         df_cnn_kf_cam = transform_model_to_cam(df_cnn_kf_source, R_X_cnn, t_X_cnn, R_Y_cnn, t_Y_cnn)
 
-    # 8. Process ML Trajectories (Raw vs Kalman Filtered)
+    # 8. Process ML Trajectories
     df_ml_raw_cam = None
     df_ml_kf_cam = None
     if Path(args.ml_raw_csv).exists():
         df_ml_raw_source = pd.read_csv(args.ml_raw_csv)
-        # Transform raw un-smoothed predictions
         df_ml_raw_cam = transform_model_to_cam(df_ml_raw_source, R_X_ml, t_X_ml, R_Y_ml, t_Y_ml)
-        # Apply 6-DoF Kalman filter and then transform
         df_ml_kf_source = apply_kalman_filter_to_trajectory(
             df_ml_raw_source, pos_noise_mm=args.pos_noise, accel_noise_mm=args.accel_noise, rot_tau_s=args.rot_tau
         )
         df_ml_kf_cam = transform_model_to_cam(df_ml_kf_source, R_X_ml, t_X_ml, R_Y_ml, t_Y_ml)
 
     show_trails = not args.no_trails
-    video_records = []
     render_cnn = args.pipeline in ["cnn", "all"]
     render_ml = args.pipeline in ["ml", "all"]
 
-    # -----------------------------------------------------------------------
-    # Base Videos (Shared): Bright Raw/GT and Dark Raw/GT
-    # -----------------------------------------------------------------------
-    # 1. Bright Video Raw
-    rec = render_video_variant(
-        stage_id="Bright-Raw",
-        output_filename=str(out_dir / "01_bright_raw.mp4"),
-        stream_type="bright",
-        use_filtered_stream=False, show_blobs=False, model_type=None, df_model_cam=None, show_gt=False,
-        show_trails=False, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-        video_path=args.bright_video, timestamps_path=args.bright_ts,
-        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-        dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
-        K=K, dist=dist, start_frame=args.start, count_frames=args.count
+    # 1. Render Standard Dataset
+    print("\n>>> [1/2] Rendering Standard Data-Driven Dataset...")
+    standard_records = render_all_data_variants(
+        out_dir=out_dir,
+        is_simulated=False,
+        args=args,
+        render_cnn=render_cnn,
+        render_ml=render_ml,
+        df_cnn_raw_cam=df_cnn_raw_cam,
+        df_cnn_kf_cam=df_cnn_kf_cam,
+        df_ml_raw_cam=df_ml_raw_cam,
+        df_ml_kf_cam=df_ml_kf_cam,
+        gt_pos_rhs=gt_pos_rhs,
+        gt_quats_rhs=gt_quats_rhs,
+        t_gt_all=t_gt_all,
+        dt_sync_gt=dt_sync_gt,
+        R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
+        K=K, dist=dist
     )
-    video_records.append(rec)
 
-    # 2. Bright Video + GT
-    rec = render_video_variant(
-        stage_id="Bright-GT",
-        output_filename=str(out_dir / "02_bright_gt.mp4"),
-        stream_type="bright",
-        use_filtered_stream=False, show_blobs=False, model_type=None, df_model_cam=None, show_gt=True,
-        show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-        video_path=args.bright_video, timestamps_path=args.bright_ts,
-        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-        dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
-        K=K, dist=dist, start_frame=args.start, count_frames=args.count
-    )
-    video_records.append(rec)
-
-    # 3. Dark Video Raw
-    rec = render_video_variant(
-        stage_id="Dark-Raw",
-        output_filename=str(out_dir / "03_dark_raw.mp4"),
-        stream_type="dark",
-        use_filtered_stream=False, show_blobs=False, model_type=None, df_model_cam=None, show_gt=False,
-        show_trails=False, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-        video_path=args.dark_video, timestamps_path=args.dark_ts,
-        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-        dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
-        K=K, dist=dist, start_frame=args.start, count_frames=args.count
-    )
-    video_records.append(rec)
-
-    # 4. Dark Video + GT
-    rec = render_video_variant(
-        stage_id="Dark-GT",
-        output_filename=str(out_dir / "04_dark_gt.mp4"),
-        stream_type="dark",
-        use_filtered_stream=False, show_blobs=False, model_type=None, df_model_cam=None, show_gt=True,
-        show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-        video_path=args.dark_video, timestamps_path=args.dark_ts,
-        gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-        dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
-        K=K, dist=dist, start_frame=args.start, count_frames=args.count
-    )
-    video_records.append(rec)
-
-    # -----------------------------------------------------------------------
-    # CNN Pipeline Specific Stages
-    # -----------------------------------------------------------------------
-    if render_cnn:
-        # 5. CNN Raw Predictions (Raw neural inference with natural jitter)
-        rec = render_video_variant(
-            stage_id="CNN-Raw",
-            output_filename=str(out_dir / "05_cnn_raw.mp4"),
-            stream_type="dark",
-            use_filtered_stream=False, show_blobs=False, model_type="cnn_raw", df_model_cam=df_cnn_raw_cam, show_gt=False,
-            show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-            video_path=args.dark_video, timestamps_path=args.dark_ts,
-            gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-            dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
-            K=K, dist=dist, start_frame=args.start, count_frames=args.count
-        )
-        video_records.append(rec)
-
-        # 6. CNN Raw + GT
-        rec = render_video_variant(
-            stage_id="CNN-Raw-GT",
-            output_filename=str(out_dir / "06_cnn_gt.mp4"),
-            stream_type="dark",
-            use_filtered_stream=False, show_blobs=False, model_type="cnn_raw", df_model_cam=df_cnn_raw_cam, show_gt=True,
-            show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-            video_path=args.dark_video, timestamps_path=args.dark_ts,
-            gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-            dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
-            K=K, dist=dist, start_frame=args.start, count_frames=args.count
-        )
-        video_records.append(rec)
-
-        # 7. CNN + Kalman Filter (Smooth causal state estimator)
-        rec = render_video_variant(
-            stage_id="CNN-KF-Raw",
-            output_filename=str(out_dir / "07_cnn_kf_raw.mp4"),
-            stream_type="dark",
-            use_filtered_stream=False, show_blobs=False, model_type="cnn_kf", df_model_cam=df_cnn_kf_cam, show_gt=False,
-            show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-            video_path=args.dark_video, timestamps_path=args.dark_ts,
-            gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-            dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
-            K=K, dist=dist, start_frame=args.start, count_frames=args.count
-        )
-        video_records.append(rec)
-
-        # 8. CNN + Kalman Filter + GT
-        rec = render_video_variant(
-            stage_id="CNN-KF-GT",
-            output_filename=str(out_dir / "08_cnn_kf_gt.mp4"),
-            stream_type="dark",
-            use_filtered_stream=False, show_blobs=False, model_type="cnn_kf", df_model_cam=df_cnn_kf_cam, show_gt=True,
-            show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-            video_path=args.dark_video, timestamps_path=args.dark_ts,
-            gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-            dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
-            K=K, dist=dist, start_frame=args.start, count_frames=args.count
-        )
-        video_records.append(rec)
-
-    # -----------------------------------------------------------------------
-    # ML Pipeline Specific Stages
-    # -----------------------------------------------------------------------
-    if render_ml:
-        # 5b. Optical Filtration Raw
-        rec = render_video_variant(
-            stage_id="ML-Filtration-Raw",
-            output_filename=str(out_dir / "05_dark_filtration.mp4"),
-            stream_type="dark",
-            use_filtered_stream=True, show_blobs=False, model_type=None, df_model_cam=None, show_gt=False,
-            show_trails=False, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-            video_path=args.dark_video, timestamps_path=args.dark_ts,
-            gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-            dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
-            K=K, dist=dist, start_frame=args.start, count_frames=args.count
-        )
-        video_records.append(rec)
-
-        # 6b. Optical Filtration + GT
-        rec = render_video_variant(
-            stage_id="ML-Filtration-GT",
-            output_filename=str(out_dir / "06_dark_filtration_gt.mp4"),
-            stream_type="dark",
-            use_filtered_stream=True, show_blobs=False, model_type=None, df_model_cam=None, show_gt=True,
-            show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-            video_path=args.dark_video, timestamps_path=args.dark_ts,
-            gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-            dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
-            K=K, dist=dist, start_frame=args.start, count_frames=args.count
-        )
-        video_records.append(rec)
-
-        # 7b. Blob Detection Raw
-        rec = render_video_variant(
-            stage_id="ML-Blobs-Raw",
-            output_filename=str(out_dir / "07_dark_blobs.mp4"),
-            stream_type="dark",
-            use_filtered_stream=True, show_blobs=True, model_type=None, df_model_cam=None, show_gt=False,
-            show_trails=False, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-            video_path=args.dark_video, timestamps_path=args.dark_ts,
-            gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-            dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
-            K=K, dist=dist, start_frame=args.start, count_frames=args.count
-        )
-        video_records.append(rec)
-
-        # 8b. Blob Detection + GT
-        rec = render_video_variant(
-            stage_id="ML-Blobs-GT",
-            output_filename=str(out_dir / "08_dark_blobs_gt.mp4"),
-            stream_type="dark",
-            use_filtered_stream=True, show_blobs=True, model_type=None, df_model_cam=None, show_gt=True,
-            show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-            video_path=args.dark_video, timestamps_path=args.dark_ts,
-            gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-            dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
-            K=K, dist=dist, start_frame=args.start, count_frames=args.count
-        )
-        video_records.append(rec)
-
-        # 9b. ML Predictions Raw (Raw feature regression inferences)
-        rec = render_video_variant(
-            stage_id="ML-Raw",
-            output_filename=str(out_dir / "09_ml_raw.mp4"),
-            stream_type="dark",
-            use_filtered_stream=True, show_blobs=False, model_type="ml_raw", df_model_cam=df_ml_raw_cam, show_gt=False,
-            show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-            video_path=args.dark_video, timestamps_path=args.dark_ts,
-            gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-            dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
-            K=K, dist=dist, start_frame=args.start, count_frames=args.count
-        )
-        video_records.append(rec)
-
-        # 10b. ML Predictions + GT
-        rec = render_video_variant(
-            stage_id="ML-GT",
-            output_filename=str(out_dir / "10_ml_gt.mp4"),
-            stream_type="dark",
-            use_filtered_stream=True, show_blobs=False, model_type="ml_raw", df_model_cam=df_ml_raw_cam, show_gt=True,
-            show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-            video_path=args.dark_video, timestamps_path=args.dark_ts,
-            gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-            dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
-            K=K, dist=dist, start_frame=args.start, count_frames=args.count
-        )
-        video_records.append(rec)
-
-        # 11b. ML + Kalman Filter Raw (Smooth causal state estimator)
-        rec = render_video_variant(
-            stage_id="ML-KF-Raw",
-            output_filename=str(out_dir / "11_ml_kf_raw.mp4"),
-            stream_type="dark",
-            use_filtered_stream=True, show_blobs=False, model_type="ml_kf", df_model_cam=df_ml_kf_cam, show_gt=False,
-            show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-            video_path=args.dark_video, timestamps_path=args.dark_ts,
-            gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-            dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
-            K=K, dist=dist, start_frame=args.start, count_frames=args.count
-        )
-        video_records.append(rec)
-
-        # 12b. ML + Kalman Filter + GT
-        rec = render_video_variant(
-            stage_id="ML-KF-GT",
-            output_filename=str(out_dir / "12_ml_kf_gt.mp4"),
-            stream_type="dark",
-            use_filtered_stream=True, show_blobs=False, model_type="ml_kf", df_model_cam=df_ml_kf_cam, show_gt=True,
-            show_trails=show_trails, trail_length=args.trail_length, trail_thickness=args.trail_thickness,
-            video_path=args.dark_video, timestamps_path=args.dark_ts,
-            gt_pos_rhs=gt_pos_rhs, gt_quats_rhs=gt_quats_rhs, t_gt_all=t_gt_all,
-            dt_sync_gt=dt_sync_gt, R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
-            K=K, dist=dist, start_frame=args.start, count_frames=args.count
-        )
-        video_records.append(rec)
-
-    # Generate Markdown Documentation File
     generate_metadata_markdown(
         out_dir=out_dir,
         timestamp_str=timestamp_str,
         pipeline_mode=args.pipeline,
         calib_gt=calib_gt,
-        video_records=video_records,
+        video_records=standard_records,
         start_frame=args.start,
         count_frames=args.count,
         show_trails=show_trails,
@@ -1129,9 +1311,51 @@ def main():
         }
     )
 
+    # 2. Render Simulated FPS Dataset (CNN @ 5 FPS, ML @ 25 FPS)
+    if not args.no_simulated:
+        simulated_dir = out_dir / "simulated"
+        simulated_dir.mkdir(parents=True, exist_ok=True)
+        print(f"\n>>> [2/2] Rendering Simulated Raspberry Pi 4B Dataset -> {simulated_dir.resolve()}...")
+        simulated_records = render_all_data_variants(
+            out_dir=simulated_dir,
+            is_simulated=True,
+            args=args,
+            render_cnn=render_cnn,
+            render_ml=render_ml,
+            df_cnn_raw_cam=df_cnn_raw_cam,
+            df_cnn_kf_cam=df_cnn_kf_cam,
+            df_ml_raw_cam=df_ml_raw_cam,
+            df_ml_kf_cam=df_ml_kf_cam,
+            gt_pos_rhs=gt_pos_rhs,
+            gt_quats_rhs=gt_quats_rhs,
+            t_gt_all=t_gt_all,
+            dt_sync_gt=dt_sync_gt,
+            R_X_gt=R_X_gt, t_X_gt=t_X_gt, R_Y_gt=R_Y_gt, t_Y_gt=t_Y_gt,
+            K=K, dist=dist
+        )
+
+        generate_metadata_markdown(
+            out_dir=simulated_dir,
+            timestamp_str=timestamp_str,
+            pipeline_mode=args.pipeline,
+            calib_gt=calib_gt,
+            video_records=simulated_records,
+            start_frame=args.start,
+            count_frames=args.count,
+            show_trails=show_trails,
+            trail_length=args.trail_length,
+            kf_settings={
+                "pos_noise": args.pos_noise,
+                "accel_noise": args.accel_noise,
+                "rot_tau": args.rot_tau
+            }
+        )
+
     print(f"\n=======================================================")
-    print(f"Data-Driven videos ({len(video_records)} files) successfully saved to:")
-    print(f"  {out_dir.resolve()}")
+    print(f"Data-Driven renders successfully completed:")
+    print(f"  Standard Directory  : {out_dir.resolve()}")
+    if not args.no_simulated:
+        print(f"  Simulated Directory : {(out_dir / 'simulated').resolve()}")
     print(f"=======================================================\n")
 
 

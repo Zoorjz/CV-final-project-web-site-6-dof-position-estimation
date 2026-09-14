@@ -24,6 +24,7 @@ export class VideoPlayer {
       ? options.defaultStageIndex 
       : Math.max(0, initialStages.length - 2);
     this.showGT = options.showGT || false;
+    this.isSimulated = options.isSimulated || false;
     this.onVideoChange = options.onVideoChange || (() => {});
     this.onUserSeek = options.onUserSeek || (() => {});
     this.onUserPlayPause = options.onUserPlayPause || (() => {});
@@ -56,7 +57,7 @@ export class VideoPlayer {
 
     const stages = this.getCurrentStages();
     const stage = this.getCurrentStage();
-    const videoUrl = resolveVideoUrl(stage, this.showGT);
+    const videoUrl = resolveVideoUrl(stage, this.showGT, this.isSimulated);
 
     let headerHtml = "";
     if (this.isDataDriven) {
@@ -249,6 +250,12 @@ export class VideoPlayer {
     this.updateVideoSourceOnly();
   }
 
+  setSimulated(isSimulated) {
+    if (this.isSimulated === isSimulated) return;
+    this.isSimulated = isSimulated;
+    this.updateVideoSourceOnly();
+  }
+
   updateStageUI() {
     const stages = this.getCurrentStages();
     const stage = this.getCurrentStage();
@@ -277,7 +284,7 @@ export class VideoPlayer {
   updateVideoSourceOnly() {
     if (!this.videoElement) return;
     const stage = this.getCurrentStage();
-    const newUrl = resolveVideoUrl(stage, this.showGT);
+    const newUrl = resolveVideoUrl(stage, this.showGT, this.isSimulated);
 
     // Capture current time & state before swapping src
     const currentTime = this.videoElement.currentTime;

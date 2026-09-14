@@ -1,7 +1,7 @@
 # Tracking Video Render Dataset (Geometry-Based PnP & EKF)
 
 **Generation Timestamp**: `20260914_165912`  
-**Output Directory**: `C:\OneDrive_1trb\OneDrive\UTN Studies\CV\Final Proj\web-site\data\renders\geometry-based\renders_20260914_165911`  
+**Output Directory**: `C:\OneDrive_1trb\OneDrive\UTN Studies\CV\Final Proj\web-site\data\renders\geometry-based\renders_20260914_165911\simulated`  
 
 ---
 

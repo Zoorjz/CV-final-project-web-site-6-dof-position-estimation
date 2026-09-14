@@ -20,6 +20,7 @@ export class VideoSyncController {
     this.isPlaying = false;
     this.isScrubbing = false;
     this.showGT = false;
+    this.isSimulated = false;
     this.playbackRate = 1.0;
     this.isLooping = true;
     this.fps = 36.0;
@@ -132,8 +133,17 @@ export class VideoSyncController {
             </div>
           </div>
 
-          <!-- Right: Ground Truth Toggle & Sync Status -->
+          <!-- Right: Raspberry Pi 4B Toggle, Ground Truth Toggle & Sync Status -->
           <div class="control-group-right">
+            <label class="sim-toggle-card" for="global-sim-checkbox" title="Simulate Raspberry Pi 4B real-time frame rates (CNN: 5 FPS, ML: 25 FPS, PnP: 75 FPS)">
+              <input type="checkbox" id="global-sim-checkbox" class="sim-checkbox" />
+              <div class="sim-toggle-switch"></div>
+              <div class="sim-label-group">
+                <span class="sim-title">Simulate Raspberry Pi 4B</span>
+                <span class="sim-subtitle">Hardware FPS (5/25/75 FPS)</span>
+              </div>
+            </label>
+
             <label class="gt-toggle-card" for="global-gt-checkbox">
               <input type="checkbox" id="global-gt-checkbox" class="gt-checkbox" />
               <div class="gt-toggle-switch"></div>
@@ -178,6 +188,7 @@ export class VideoSyncController {
     const stepFwdBtn = document.getElementById("step-forward-btn");
     const speedSelect = document.getElementById("playback-speed-select");
     const gtCheckbox = document.getElementById("global-gt-checkbox");
+    const simCheckbox = document.getElementById("global-sim-checkbox");
     const scrubber = document.getElementById("global-timeline-slider");
 
     if (playBtn) {
@@ -201,6 +212,12 @@ export class VideoSyncController {
     if (gtCheckbox) {
       gtCheckbox.addEventListener("change", (e) => {
         this.setGroundTruth(e.target.checked);
+      });
+    }
+
+    if (simCheckbox) {
+      simCheckbox.addEventListener("change", (e) => {
+        this.setSimulated(e.target.checked);
       });
     }
 
@@ -363,7 +380,7 @@ export class VideoSyncController {
 
   stepFrames(frameCount) {
     this.pause();
-    const frameDuration = 1.0 / this.fps;
+    const frameDuration = this.masterDuration / Math.max(1, this.totalFrames);
     const newTime = this.masterCurrentTime + frameCount * frameDuration;
     this.seekTo(newTime);
   }
@@ -382,6 +399,12 @@ export class VideoSyncController {
     this.showGT = showGT;
     this.playerLeft?.setShowGT(showGT);
     this.playerRight?.setShowGT(showGT);
+  }
+
+  setSimulated(isSimulated) {
+    this.isSimulated = isSimulated;
+    this.playerLeft?.setSimulated(isSimulated);
+    this.playerRight?.setSimulated(isSimulated);
   }
 
   startDriftSyncLoop() {
@@ -432,8 +455,9 @@ export class VideoSyncController {
     const currentTime = forcedTime !== null ? forcedTime : this.masterCurrentTime;
     const duration = this.masterDuration;
 
-    const frameOffset = Math.floor(currentTime * this.fps);
-    const currentFrame = Math.min(this.totalFrames, frameOffset + 1);
+    const frameProgress = duration > 0 ? (currentTime / duration) : 0;
+    const frameOffset = Math.floor(frameProgress * this.totalFrames);
+    const currentFrame = Math.min(this.totalFrames, Math.max(1, frameOffset + 1));
     const absoluteFrame = this.startFrame + frameOffset;
 
     const format = (sec) => {

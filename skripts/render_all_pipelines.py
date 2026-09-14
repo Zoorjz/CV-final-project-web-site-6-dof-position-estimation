@@ -57,7 +57,7 @@ def main():
     parser.add_argument("--count", type=int, default=200, help="Number of frames to render (default: 200)")
     parser.add_argument("--pipeline", type=str, default="all", choices=["all", "geometry", "data-driven", "cnn", "ml"], help="Which pipeline(s) to render (default: all)")
     parser.add_argument("--no-trails", action="store_true", help="Disable fading 3D trajectory trails")
-    parser.add_argument("--trail-length", type=int, default=35, help="Length of fading trajectory trail in frames")
+    parser.add_argument("--trail-length", type=int, default=75, help="Length of fading trajectory trail in frames (default: 75 points, spanning ~1s at 75 FPS)")
     parser.add_argument("--trail-thickness", type=int, default=3, help="Line thickness for 3D trajectory trails")
 
     # Filter Tuning
@@ -156,7 +156,18 @@ def main():
             readme = geom_dir / "README.md"
             if readme.exists():
                 shutil.copy2(readme, pub_geom / "README.md")
-            print(f"[Web Publish] Copied geometry renders to {pub_geom}")
+            
+            # Copy simulated subfolder
+            geom_sim = geom_dir / "simulated"
+            if geom_sim.exists():
+                pub_geom_sim = pub_geom / "simulated"
+                pub_geom_sim.mkdir(parents=True, exist_ok=True)
+                for mp4 in geom_sim.glob("*.mp4"):
+                    shutil.copy2(mp4, pub_geom_sim / mp4.name)
+                sim_readme = geom_sim / "README.md"
+                if sim_readme.exists():
+                    shutil.copy2(sim_readme, pub_geom_sim / "README.md")
+            print(f"[Web Publish] Copied geometry renders (standard & simulated) to {pub_geom}")
 
         if rendered_data and dd_dir and dd_dir.exists():
             for mp4 in dd_dir.glob("*.mp4"):
@@ -164,7 +175,18 @@ def main():
             readme = dd_dir / "README.md"
             if readme.exists():
                 shutil.copy2(readme, pub_dd / "README.md")
-            print(f"[Web Publish] Copied data-driven renders to {pub_dd}")
+            
+            # Copy simulated subfolder
+            dd_sim = dd_dir / "simulated"
+            if dd_sim.exists():
+                pub_dd_sim = pub_dd / "simulated"
+                pub_dd_sim.mkdir(parents=True, exist_ok=True)
+                for mp4 in dd_sim.glob("*.mp4"):
+                    shutil.copy2(mp4, pub_dd_sim / mp4.name)
+                sim_readme = dd_sim / "README.md"
+                if sim_readme.exists():
+                    shutil.copy2(sim_readme, pub_dd_sim / "README.md")
+            print(f"[Web Publish] Copied data-driven renders (standard & simulated) to {pub_dd}")
 
         # Update dataset-info.json
         info_json_path = ROOT / "public" / "api" / "dataset-info.json"
